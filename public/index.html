@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AZ Claude Chat</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0a0f1a; color: #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; height: 100vh; display: flex; flex-direction: column; }
+    
+    #header { background: linear-gradient(135deg, #1e293b, #0f172a); border-bottom: 1px solid rgba(255,255,255,0.08); padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+    #header h1 { font-size: 16px; font-weight: 700; color: #f1f5f9; }
+    #header span { font-size: 11px; color: #64748b; }
+    #model-badge { font-size: 11px; background: rgba(131,0,81,0.2); border: 1px solid rgba(131,0,81,0.4); color: #f1a3c8; padding: 3px 10px; border-radius: 20px; }
+
+    #chat-area { flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 16px; }
+    
+    .message { max-width: 820px; width: 100%; }
+    .message.user { align-self: flex-end; }
+    .message.assistant { align-self: flex-start; }
+    
+    .bubble { padding: 14px 18px; border-radius: 12px; font-size: 14px; line-height: 1.7; white-space: pre-wrap; word-wrap: break-word; }
+    .user .bubble { background: linear-gradient(135deg, #830051, #5b0038); color: #fff; border-radius: 12px 12px 4px 12px; }
+    .assistant .bubble { background: #1e293b; color: #e2e8f0; border: 1px solid rgba(255,255,255,0.06); border-radius: 12px 12px 12px 4px; }
+    
+    .thinking { display: flex; gap: 6px; align-items: center; padding: 14px 18px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #64748b; animation: bounce 1.4s infinite; }
+    .dot:nth-child(2) { animation-delay: 0.2s; }
+    .dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes bounce { 0%, 80%, 100% { transform: scale(0.8); opacity: 0.5; } 40% { transform: scale(1.2); opacity: 1; } }
+
+    #input-area { padding: 16px 24px; border-top: 1px solid rgba(255,255,255,0.06); background: #0f172a; flex-shrink: 0; }
+    #input-row { display: flex; gap: 10px; align-items: flex-end; max-width: 820px; margin: 0 auto; }
+    #system-toggle { font-size: 11px; color: #64748b; cursor: pointer; margin-bottom: 6px; text-align: center; text-decoration: underline; }
+    #system-prompt { width: 100%; background: #1e293b; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #e2e8f0; font-size: 12px; padding: 8px 12px; resize: none; height: 60px; font-family: inherit; display: none; margin-bottom: 8px; max-width: 820px; margin-left: auto; margin-right: auto; }
+    #message-input { flex: 1; background: #1e293b; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; color: #e2e8f0; font-size: 14px; padding: 12px 16px; resize: none; min-height: 48px; max-height: 200px; font-family: inherit; line-height: 1.5; outline: none; transition: border-color 0.2s; }
+    #message-input:focus { border-color: rgba(131,0,81,0.5); }
+    #message-input::placeholder { color: #475569; }
+    
+    #send-btn { background: linear-gradient(135deg, #830051, #5b0038); border: none; border-radius: 10px; color: white; cursor: pointer; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: opacity 0.2s; }
+    #send-btn:hover { opacity: 0.85; }
+    #send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    
+    #clear-btn { background: transparent; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #64748b; cursor: pointer; padding: 6px 12px; font-size: 12px; }
+    #clear-btn:hover { color: #94a3b8; }
+    
+    #error-banner { background: rgba(239,68,68,0.1); border: 1px solid #ef4444; border-radius: 8px; color: #fca5a5; padding: 10px 14px; font-size: 13px; margin: 0 24px 12px; display: none; }
+
+    .copy-btn { font-size: 11px; color: #64748b; background: none; border: none; cursor: pointer; margin-top: 6px; padding: 2px 6px; border-radius: 4px; }
+    .copy-btn:hover { color: #94a3b8; background: rgba(255,255,255,0.05); }
+
+    code { background: rgba(0,0,0,0.4); padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 13px; }
+    pre { background: rgba(0,0,0,0.4); padding: 12px 16px; border-radius: 8px; overflow-x: auto; margin: 8px 0; }
+    pre code { background: none; padding: 0; }
+  </style>
+</head>
+<body>
+
+<div id="header">
+  <div>
+    <h1>🔒 AZ Claude Chat</h1>
+    <span>Routes through AstraZeneca AI Gateway — AZ network only</span>
+  </div>
+  <div style="display:flex;gap:10px;align-items:center">
+    <span id="model-badge">Claude Opus 4.5</span>
+    <button id="clear-btn" onclick="clearChat()">Clear</button>
+  </div>
+</div>
+
+<div id="error-banner" id="error-banner"></div>
+
+<div id="chat-area">
+  <div class="message assistant">
+    <div class="bubble">Hello! I'm Claude, running through AstraZeneca's AI Gateway. How can I help you today?
+
+<em style="color:#64748b;font-size:12px">All conversations route through the AZ gateway on your VPN — nothing leaves AstraZeneca's network.</em></div>
+  </div>
+</div>
+
+<div id="input-area">
+  <div style="max-width:820px;margin:0 auto">
+    <div id="system-toggle" onclick="toggleSystem()">+ Add system prompt</div>
+    <textarea id="system-prompt" placeholder="Optional system prompt — e.g. 'You are a supply chain expert at AstraZeneca...'"></textarea>
+  </div>
+  <div id="input-row">
+    <textarea id="message-input" placeholder="Message Claude..." rows="1" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+    <button id="send-btn" onclick="sendMessage()">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+    </button>
+  </div>
+</div>
+
+<script>
+let messages = [];
+let isLoading = false;
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 200) + 'px';
+}
+
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+}
+
+function toggleSystem() {
+  const sp = document.getElementById('system-prompt');
+  const tog = document.getElementById('system-toggle');
+  if (sp.style.display === 'none' || !sp.style.display) {
+    sp.style.display = 'block';
+    tog.textContent = '− Hide system prompt';
+  } else {
+    sp.style.display = 'none';
+    tog.textContent = '+ Add system prompt';
+  }
+}
+
+function clearChat() {
+  messages = [];
+  const area = document.getElementById('chat-area');
+  area.innerHTML = `<div class="message assistant"><div class="bubble">Chat cleared. How can I help you?</div></div>`;
+}
+
+function addMessage(role, content) {
+  const area = document.getElementById('chat-area');
+  const div = document.createElement('div');
+  div.className = `message ${role}`;
+  
+  let html = content.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => 
+    `<pre><code>${code.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</code></pre>`)
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>');
+  
+  div.innerHTML = `<div class="bubble">${html}</div>`;
+  if (role === 'assistant') {
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'copy-btn';
+    copyBtn.textContent = 'Copy';
+    copyBtn.onclick = () => { navigator.clipboard.writeText(content); copyBtn.textContent = 'Copied!'; setTimeout(() => copyBtn.textContent = 'Copy', 2000); };
+    div.appendChild(copyBtn);
+  }
+  area.appendChild(div);
+  area.scrollTop = area.scrollHeight;
+}
+
+function showThinking() {
+  const area = document.getElementById('chat-area');
+  const div = document.createElement('div');
+  div.className = 'message assistant';
+  div.id = 'thinking';
+  div.innerHTML = `<div class="thinking"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>`;
+  area.appendChild(div);
+  area.scrollTop = area.scrollHeight;
+}
+
+function removeThinking() {
+  const t = document.getElementById('thinking');
+  if (t) t.remove();
+}
+
+function showError(msg) {
+  const banner = document.getElementById('error-banner');
+  banner.textContent = msg;
+  banner.style.display = 'block';
+  setTimeout(() => banner.style.display = 'none', 8000);
+}
+
+async function sendMessage() {
+  if (isLoading) return;
+  const input = document.getElementById('message-input');
+  const text = input.value.trim();
+  if (!text) return;
+
+  input.value = '';
+  input.style.height = 'auto';
+  isLoading = true;
+  document.getElementById('send-btn').disabled = true;
+
+  messages.push({ role: 'user', content: text });
+  addMessage('user', text);
+  showThinking();
+
+  const system = document.getElementById('system-prompt').value.trim();
+
+  try {
+    const resp = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages, system: system || undefined, max_tokens: 4096 }),
+    });
+    const data = await resp.json();
+    removeThinking();
+    if (data.error) { showError(data.error); messages.pop(); return; }
+    messages.push({ role: 'assistant', content: data.content });
+    addMessage('assistant', data.content);
+  } catch (e) {
+    removeThinking();
+    showError('Connection error — make sure you are on AZ VPN');
+    messages.pop();
+  } finally {
+    isLoading = false;
+    document.getElementById('send-btn').disabled = false;
+    input.focus();
+  }
+}
+</script>
+</body>
+</html>
