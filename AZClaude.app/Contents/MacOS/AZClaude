@@ -1,41 +1,37 @@
-#!/bin/bash
-# Find project directory
-APP_DIR="$HOME/az-claude-chat"
+#!/usr/bin/env osascript
 
-if [ ! -f "$APP_DIR/server.js" ]; then
-  osascript -e 'display alert "AZ Claude Chat" message "Project not found at ~/az-claude-chat\nPlease clone: git clone https://github.com/davidoliver1995-ship-it/az-claude-chat.git ~/az-claude-chat" as critical'
-  exit 1
-fi
+set appDir to (POSIX path of (path to home folder)) & "az-claude-chat"
+set serverFile to appDir & "/server.js"
 
-# Source common shell profiles to get node/npm in PATH
-for f in "$HOME/.nvm/nvm.sh" "$HOME/.profile" "$HOME/.bash_profile" "$HOME/.zshrc" /usr/local/bin/node /opt/homebrew/bin/node; do
-  [ -f "$f" ] && source "$f" 2>/dev/null || true
-done
+-- Check project exists
+try
+  do shell script "test -f " & quoted form of serverFile
+on error
+  display alert "AZ Claude Chat" message "Project not found at ~/az-claude-chat. Please clone the repo first." as critical
+  return
+end try
 
-# Add common node locations to PATH
-export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.nvm/versions/node/$(ls $HOME/.nvm/versions/node 2>/dev/null | tail -1)/bin:$PATH"
+-- Check .env exists  
+try
+  do shell script "test -f " & quoted form of (appDir & "/.env")
+on error
+  do shell script "cp " & quoted form of (appDir & "/.env.example") & " " & quoted form of (appDir & "/.env")
+  display alert "Setup Required" message "Add your AI_GATEWAY_KEY to ~/.az-claude-chat/.env then relaunch." buttons {"Open File"} default button "Open File"
+  do shell script "open -a TextEdit " & quoted form of (appDir & "/.env")
+  return
+end try
 
-NODE=$(which node 2>/dev/null || echo "")
-NPM=$(which npm 2>/dev/null || echo "")
+-- Kill existing server
+try
+  do shell script "lsof -ti:3737 | xargs kill -9 2>/dev/null; true"
+end try
 
-if [ -z "$NODE" ]; then
-  osascript -e 'display alert "Node.js not found" message "Install Node.js from nodejs.org, then relaunch." as critical'
-  exit 1
-fi
+-- Start server
+do shell script "/usr/local/bin/node " & quoted form of (appDir & "/server.js") & " > /tmp/az-claude-chat.log 2>&1 &"
 
-cd "$APP_DIR"
+delay 2
 
-# Install deps if needed
-if [ ! -d "node_modules" ]; then
-  "$NPM" install
-fi
+-- Open browser
+do shell script "open http://localhost:3737"
 
-# Kill existing
-lsof -ti:3737 | xargs kill -9 2>/dev/null
-
-# Start server
-nohup "$NODE" server.js > /tmp/az-claude-chat.log 2>&1 &
-
-sleep 2
-open "http://localhost:3737"
-osascript -e 'display notification "AZ Claude Chat is running at localhost:3737" with title "AZ Claude"'
+display notification "AZ Claude Chat running at localhost:3737" with title "AZ Claude"
