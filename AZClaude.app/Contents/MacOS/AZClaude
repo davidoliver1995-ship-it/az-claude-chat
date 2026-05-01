@@ -1,40 +1,41 @@
 #!/bin/bash
+# Find project directory
+APP_DIR="$HOME/az-claude-chat"
 
-# Find the project - check common locations
-for DIR in "$HOME/az-claude-chat" "/Users/$(whoami)/az-claude-chat"; do
-  if [ -f "$DIR/server.js" ]; then
-    APP_DIR="$DIR"
-    break
-  fi
+if [ ! -f "$APP_DIR/server.js" ]; then
+  osascript -e 'display alert "AZ Claude Chat" message "Project not found at ~/az-claude-chat\nPlease clone: git clone https://github.com/davidoliver1995-ship-it/az-claude-chat.git ~/az-claude-chat" as critical'
+  exit 1
+fi
+
+# Source common shell profiles to get node/npm in PATH
+for f in "$HOME/.nvm/nvm.sh" "$HOME/.profile" "$HOME/.bash_profile" "$HOME/.zshrc" /usr/local/bin/node /opt/homebrew/bin/node; do
+  [ -f "$f" ] && source "$f" 2>/dev/null || true
 done
 
-if [ -z "$APP_DIR" ]; then
-  osascript -e 'display alert "AZ Claude Chat" message "Project folder not found. Please run: git clone https://github.com/davidoliver1995-ship-it/az-claude-chat.git ~/az-claude-chat" as critical'
+# Add common node locations to PATH
+export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.nvm/versions/node/$(ls $HOME/.nvm/versions/node 2>/dev/null | tail -1)/bin:$PATH"
+
+NODE=$(which node 2>/dev/null || echo "")
+NPM=$(which npm 2>/dev/null || echo "")
+
+if [ -z "$NODE" ]; then
+  osascript -e 'display alert "Node.js not found" message "Install Node.js from nodejs.org, then relaunch." as critical'
   exit 1
 fi
 
 cd "$APP_DIR"
 
-# Check for .env
-if [ ! -f ".env" ]; then
-  cp .env.example .env
-  osascript -e 'display alert "AZ Claude Chat — Setup Required" message "Please add your AI_GATEWAY_KEY to the .env file, then relaunch." buttons {"Open .env File", "Cancel"} default button "Open .env File"'
-  open -a TextEdit .env
-  exit 0
-fi
-
-# Install node_modules if needed
+# Install deps if needed
 if [ ! -d "node_modules" ]; then
-  osascript -e 'display notification "Installing dependencies (first run only)..." with title "AZ Claude Chat"'
-  npm install
+  "$NPM" install
 fi
 
-# Kill any existing instance on port 3737
+# Kill existing
 lsof -ti:3737 | xargs kill -9 2>/dev/null
 
 # Start server
-nohup npm start > /tmp/az-claude-chat.log 2>&1 &
+nohup "$NODE" server.js > /tmp/az-claude-chat.log 2>&1 &
 
 sleep 2
 open "http://localhost:3737"
-osascript -e 'display notification "AZ Claude Chat is running" with title "AZ Claude Chat"'
+osascript -e 'display notification "AZ Claude Chat is running at localhost:3737" with title "AZ Claude"'
