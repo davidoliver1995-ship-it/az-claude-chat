@@ -1,17 +1,15 @@
 #!/bin/bash
 
-# Find the app's directory to locate the project
-SCRIPT_DIR="$(cd "$(dirname "$0")/../../../.." && pwd)"
-APP_DIR="$SCRIPT_DIR"
+# Find the project - check common locations
+for DIR in "$HOME/az-claude-chat" "/Users/$(whoami)/az-claude-chat"; do
+  if [ -f "$DIR/server.js" ]; then
+    APP_DIR="$DIR"
+    break
+  fi
+done
 
-# Check if this is running from Applications - if so, look for the project folder
-if [[ "$SCRIPT_DIR" == "/Applications" ]]; then
-  APP_DIR="$HOME/az-claude-chat"
-fi
-
-# Check project exists
-if [ ! -f "$APP_DIR/server.js" ]; then
-  osascript -e 'display alert "AZ Claude Chat" message "Project folder not found at ~/az-claude-chat. Please clone the GitHub repo first." as critical'
+if [ -z "$APP_DIR" ]; then
+  osascript -e 'display alert "AZ Claude Chat" message "Project folder not found. Please run: git clone https://github.com/davidoliver1995-ship-it/az-claude-chat.git ~/az-claude-chat" as critical'
   exit 1
 fi
 
@@ -20,29 +18,23 @@ cd "$APP_DIR"
 # Check for .env
 if [ ! -f ".env" ]; then
   cp .env.example .env
-  osascript -e 'display alert "AZ Claude Chat — Setup Required" message "Please add your AI_GATEWAY_KEY to the .env file at ~/az-claude-chat/.env, then relaunch." buttons {"Open .env File", "Cancel"} default button "Open .env File"' 
-  open .env
+  osascript -e 'display alert "AZ Claude Chat — Setup Required" message "Please add your AI_GATEWAY_KEY to the .env file, then relaunch." buttons {"Open .env File", "Cancel"} default button "Open .env File"'
+  open -a TextEdit .env
   exit 0
 fi
 
 # Install node_modules if needed
 if [ ! -d "node_modules" ]; then
-  osascript -e 'display notification "Installing dependencies..." with title "AZ Claude Chat"'
+  osascript -e 'display notification "Installing dependencies (first run only)..." with title "AZ Claude Chat"'
   npm install
 fi
 
 # Kill any existing instance on port 3737
 lsof -ti:3737 | xargs kill -9 2>/dev/null
 
-# Start server in background
+# Start server
 nohup npm start > /tmp/az-claude-chat.log 2>&1 &
-SERVER_PID=$!
 
-# Wait for server to be ready
 sleep 2
-
-# Open browser
 open "http://localhost:3737"
-
-# Show notification
-osascript -e 'display notification "AZ Claude Chat is running" with title "AZ Claude Chat" subtitle "On AZ VPN — http://localhost:3737"'
+osascript -e 'display notification "AZ Claude Chat is running" with title "AZ Claude Chat"'
