@@ -1,26 +1,5 @@
 #!/usr/bin/env osascript
 
-set appDir to (POSIX path of (path to home folder)) & "az-claude-chat"
-set serverFile to appDir & "/server.js"
-
--- Check project exists
-try
-  do shell script "test -f " & quoted form of serverFile
-on error
-  display alert "AZ Claude Chat" message "Project not found at ~/az-claude-chat. Please run: git clone https://github.com/davidoliver1995-ship-it/az-claude-chat.git ~/az-claude-chat" as critical
-  return
-end try
-
--- Check .env exists  
-try
-  do shell script "test -f " & quoted form of (appDir & "/.env")
-on error
-  do shell script "cp " & quoted form of (appDir & "/.env.example") & " " & quoted form of (appDir & "/.env")
-  display alert "Setup Required" message "Add your AI_GATEWAY_KEY to ~/.az-claude-chat/.env then relaunch." buttons {"Open File"} default button "Open File"
-  do shell script "open -a TextEdit " & quoted form of (appDir & "/.env")
-  return
-end try
-
 -- Kill any existing server on port 3737
 try
   do shell script "lsof -ti:3737 | xargs kill -9 2>/dev/null; true"
@@ -28,12 +7,13 @@ end try
 
 delay 1
 
--- Start server
-do shell script "/usr/local/bin/node " & quoted form of (appDir & "/server.js") & " > /tmp/az-claude-chat.log 2>&1 &"
+-- Start server via Terminal so it stays running and env vars load properly
+tell application "Terminal"
+  activate
+  do script "cd ~/az-claude-chat && node server.js"
+end tell
 
-delay 2
+delay 3
 
 -- Open browser
 do shell script "open http://localhost:3737"
-
-display notification "AZ Claude Chat running at localhost:3737" with title "AZ Claude"
