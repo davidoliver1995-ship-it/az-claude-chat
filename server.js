@@ -14,9 +14,9 @@ app.use(express.static(join(__dirname, 'public')));
 // Proxy Claude requests through AZ gateway
 app.post('/api/chat', async (req, res) => {
   const { messages, system, max_tokens = 4096 } = req.body;
-  const gatewayBase = process.env.AI_GATEWAY_URL || 'https://ai-gateway.astrazeneca.net/bedrock';
+  const gatewayBase = process.env.ANTHROPIC_BEDROCK_BASE_URL || process.env.AI_GATEWAY_URL || 'https://ai-gateway.astrazeneca.net/bedrock';
   const model = process.env.CLAUDE_MODEL || 'us.anthropic.claude-opus-4-5-20251101-v1:0';
-  const apiKey = process.env.AI_GATEWAY_KEY || '';
+  const apiKey = process.env.AI_GATEWAY_KEY || process.env.AWS_BEARER_TOKEN_BEDROCK || process.env.ANTHROPIC_API_KEY || '';
 
   if (!apiKey) {
     return res.status(500).json({ error: 'AI_GATEWAY_KEY not set in .env file.' });
