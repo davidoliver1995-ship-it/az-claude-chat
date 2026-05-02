@@ -6,23 +6,58 @@
   <title>AZ Claude Chat</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #0a0f1a; color: #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; height: 100vh; display: flex; flex-direction: column; }
-    
-    #header { background: linear-gradient(135deg, #1e293b, #0f172a); border-bottom: 1px solid rgba(255,255,255,0.08); padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+    body { background: #0a0f1a; color: #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+    /* ── Header ── */
+    #header { background: linear-gradient(135deg, #1e293b, #0f172a); border-bottom: 1px solid rgba(255,255,255,0.08); padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; z-index: 10; }
     #header h1 { font-size: 16px; font-weight: 700; color: #f1f5f9; }
     #header span { font-size: 11px; color: #64748b; }
     #model-badge { font-size: 11px; background: rgba(131,0,81,0.2); border: 1px solid rgba(131,0,81,0.4); color: #f1a3c8; padding: 3px 10px; border-radius: 20px; }
 
+    #error-banner { background: rgba(239,68,68,0.1); border: 1px solid #ef4444; border-radius: 8px; color: #fca5a5; padding: 10px 14px; font-size: 13px; margin: 0 24px 12px; display: none; flex-shrink: 0; }
+
+    /* ── GitHub Panel ── */
+    #gh-toggle-btn { background: transparent; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; color: #94a3b8; cursor: pointer; padding: 5px 12px; font-size: 12px; white-space: nowrap; }
+    #gh-toggle-btn:hover { color: #e2e8f0; border-color: rgba(255,255,255,0.3); }
+    #gh-panel { background: #1e293b; border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 14px 16px; margin: 0 24px 12px; display: none; flex-shrink: 0; }
+    #gh-panel h3 { font-size: 13px; color: #94a3b8; margin-bottom: 10px; }
+    .gh-input-row { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+    .gh-input { background: #0f172a; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: #e2e8f0; font-size: 12px; padding: 6px 10px; flex: 1; min-width: 120px; font-family: inherit; outline: none; }
+    .gh-input:focus { border-color: rgba(131,0,81,0.5); }
+    .gh-input::placeholder { color: #475569; }
+    .gh-btn { background: #273549; border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; color: #e2e8f0; cursor: pointer; font-size: 12px; padding: 6px 14px; white-space: nowrap; }
+    .gh-btn:hover { background: #334155; }
+    .gh-btn-primary { background: rgba(131,0,81,0.3); border-color: rgba(131,0,81,0.5); }
+    .gh-btn-primary:hover { background: rgba(131,0,81,0.5); }
+    #gh-status { font-size: 12px; color: #64748b; margin-bottom: 8px; min-height: 16px; }
+    #gh-status.ok { color: #4ade80; }
+    #gh-status.err { color: #f87171; }
+    #gh-file-list { list-style: none; max-height: 200px; overflow-y: auto; margin-bottom: 10px; border: 1px solid rgba(255,255,255,0.06); border-radius: 6px; }
+    #gh-file-list li { padding: 6px 10px; font-size: 12px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.04); display: flex; align-items: center; gap: 6px; }
+    #gh-file-list li:last-child { border-bottom: none; }
+    #gh-file-list li:hover { background: rgba(255,255,255,0.05); }
+    #gh-file-list li .fi { opacity: 0.6; font-size: 11px; }
+    #gh-create-section { border-top: 1px solid rgba(255,255,255,0.06); margin-top: 10px; padding-top: 10px; display: none; }
+    #gh-create-section h4 { font-size: 12px; color: #94a3b8; margin-bottom: 8px; }
+    #gh-new-content { width: 100%; background: #0f172a; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: #e2e8f0; font-size: 12px; padding: 6px 10px; resize: vertical; height: 80px; font-family: monospace; outline: none; margin-bottom: 6px; }
+    #gh-new-content:focus { border-color: rgba(131,0,81,0.5); }
+
+    /* ── Main two-panel body ── */
+    #main-body { flex: 1; display: flex; overflow: hidden; min-height: 0; }
+
+    /* ── Chat panel ── */
+    #chat-panel { flex: 1; display: flex; flex-direction: column; min-width: 0; transition: flex 0.3s ease; overflow: hidden; }
+
     #chat-area { flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 16px; }
-    
+
     .message { max-width: 820px; width: 100%; }
     .message.user { align-self: flex-end; }
     .message.assistant { align-self: flex-start; }
-    
+
     .bubble { padding: 14px 18px; border-radius: 12px; font-size: 14px; line-height: 1.7; word-wrap: break-word; }
     .user .bubble { background: linear-gradient(135deg, #830051, #5b0038); color: #fff; border-radius: 12px 12px 4px 12px; white-space: pre-wrap; }
     .assistant .bubble { background: #1e293b; color: #e2e8f0; border: 1px solid rgba(255,255,255,0.06); border-radius: 12px 12px 12px 4px; }
-    
+
     .thinking { display: flex; gap: 6px; align-items: center; padding: 14px 18px; }
     .dot { width: 8px; height: 8px; border-radius: 50%; background: #64748b; animation: bounce 1.4s infinite; }
     .dot:nth-child(2) { animation-delay: 0.2s; }
@@ -36,60 +71,125 @@
     #message-input { flex: 1; background: #1e293b; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; color: #e2e8f0; font-size: 14px; padding: 12px 16px; resize: none; min-height: 48px; max-height: 200px; font-family: inherit; line-height: 1.5; outline: none; transition: border-color 0.2s; }
     #message-input:focus { border-color: rgba(131,0,81,0.5); }
     #message-input::placeholder { color: #475569; }
-    
+
     #send-btn { background: linear-gradient(135deg, #830051, #5b0038); border: none; border-radius: 10px; color: white; cursor: pointer; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: opacity 0.2s; }
     #send-btn:hover { opacity: 0.85; }
     #send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-    
+
     #clear-btn { background: transparent; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #64748b; cursor: pointer; padding: 6px 12px; font-size: 12px; }
     #clear-btn:hover { color: #94a3b8; }
-    
-    #error-banner { background: rgba(239,68,68,0.1); border: 1px solid #ef4444; border-radius: 8px; color: #fca5a5; padding: 10px 14px; font-size: 13px; margin: 0 24px 12px; display: none; }
 
     .copy-btn { font-size: 11px; color: #64748b; background: none; border: none; cursor: pointer; margin-top: 6px; padding: 2px 6px; border-radius: 4px; }
     .copy-btn:hover { color: #94a3b8; background: rgba(255,255,255,0.05); }
-
     .dl-txt-btn { font-size: 11px; color: #64748b; background: #1e293b; border: 1px solid rgba(255,255,255,0.1); cursor: pointer; margin-top: 6px; margin-left: 4px; padding: 2px 8px; border-radius: 4px; }
     .dl-txt-btn:hover { color: #94a3b8; background: #273549; }
 
     code { background: rgba(0,0,0,0.4); padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 13px; }
     pre { background: rgba(0,0,0,0.4); padding: 12px 16px; border-radius: 8px; overflow-x: auto; margin: 8px 0; }
     pre code { background: none; padding: 0; }
-
     .code-block-wrap { position: relative; margin: 8px 0; }
     .code-dl-btn { display: inline-block; font-size: 11px; color: #94a3b8; background: #1e293b; border: 1px solid rgba(255,255,255,0.12); cursor: pointer; padding: 3px 10px; border-radius: 0 0 6px 6px; margin-top: -2px; transition: background 0.15s, color 0.15s; }
     .code-dl-btn:hover { background: #273549; color: #e2e8f0; }
 
-    /* ── GitHub Panel ── */
-    #gh-toggle-btn { background: transparent; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; color: #94a3b8; cursor: pointer; padding: 5px 12px; font-size: 12px; white-space: nowrap; }
-    #gh-toggle-btn:hover { color: #e2e8f0; border-color: rgba(255,255,255,0.3); }
+    /* ── Artifact Panel ── */
+    #artifact-panel {
+      width: 0;
+      min-width: 0;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      background: #f8f9fa;
+      border-left: 1px solid rgba(255,255,255,0.08);
+      transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    #artifact-panel.open {
+      width: 40%;
+      min-width: 340px;
+    }
 
-    #gh-panel { background: #1e293b; border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 14px 16px; margin: 0 24px 12px; display: none; max-width: 820px; margin-left: auto; margin-right: auto; }
-    #gh-panel h3 { font-size: 13px; color: #94a3b8; margin-bottom: 10px; }
+    #artifact-header {
+      background: #1e293b;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      gap: 10px;
+    }
+    #artifact-header-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    #artifact-icon { font-size: 16px; flex-shrink: 0; }
+    #artifact-title { font-size: 13px; font-weight: 600; color: #f1f5f9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #artifact-type-badge { font-size: 10px; background: rgba(131,0,81,0.25); border: 1px solid rgba(131,0,81,0.4); color: #f1a3c8; padding: 2px 8px; border-radius: 10px; white-space: nowrap; flex-shrink: 0; }
+    #artifact-close-btn { background: none; border: none; color: #64748b; cursor: pointer; font-size: 18px; line-height: 1; padding: 2px 4px; border-radius: 4px; flex-shrink: 0; }
+    #artifact-close-btn:hover { color: #e2e8f0; background: rgba(255,255,255,0.1); }
 
-    .gh-input-row { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
-    .gh-input { background: #0f172a; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: #e2e8f0; font-size: 12px; padding: 6px 10px; flex: 1; min-width: 120px; font-family: inherit; outline: none; }
-    .gh-input:focus { border-color: rgba(131,0,81,0.5); }
-    .gh-input::placeholder { color: #475569; }
-    .gh-btn { background: #273549; border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; color: #e2e8f0; cursor: pointer; font-size: 12px; padding: 6px 14px; white-space: nowrap; }
-    .gh-btn:hover { background: #334155; }
-    .gh-btn-primary { background: rgba(131,0,81,0.3); border-color: rgba(131,0,81,0.5); }
-    .gh-btn-primary:hover { background: rgba(131,0,81,0.5); }
+    #artifact-toolbar {
+      background: #1e293b;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      padding: 8px 12px;
+      display: flex;
+      gap: 6px;
+      flex-shrink: 0;
+      flex-wrap: wrap;
+    }
+    .art-export-btn {
+      background: #273549;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 6px;
+      color: #cbd5e1;
+      cursor: pointer;
+      font-size: 11px;
+      padding: 5px 11px;
+      transition: background 0.15s, color 0.15s;
+      white-space: nowrap;
+    }
+    .art-export-btn:hover { background: #334155; color: #f1f5f9; }
+    .art-export-btn.primary { background: rgba(131,0,81,0.25); border-color: rgba(131,0,81,0.45); color: #f1a3c8; }
+    .art-export-btn.primary:hover { background: rgba(131,0,81,0.45); }
+    .art-export-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
-    #gh-status { font-size: 12px; color: #64748b; margin-bottom: 8px; min-height: 16px; }
-    #gh-status.ok { color: #4ade80; }
-    #gh-status.err { color: #f87171; }
+    #artifact-preview {
+      flex: 1;
+      overflow-y: auto;
+      background: #fff;
+    }
 
-    #gh-file-list { list-style: none; max-height: 200px; overflow-y: auto; margin-bottom: 10px; border: 1px solid rgba(255,255,255,0.06); border-radius: 6px; }
-    #gh-file-list li { padding: 6px 10px; font-size: 12px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.04); display: flex; align-items: center; gap: 6px; }
-    #gh-file-list li:last-child { border-bottom: none; }
-    #gh-file-list li:hover { background: rgba(255,255,255,0.05); }
-    #gh-file-list li .fi { opacity: 0.6; font-size: 11px; }
+    /* Doc preview styles (rendered inside #artifact-preview) */
+    .art-doc-preview { font-family: Georgia, 'Times New Roman', serif; font-size: 14px; line-height: 1.8; padding: 32px; color: #1a1a1a; min-height: 100%; }
+    .art-doc-preview h1 { font-size: 26px; font-weight: 700; margin: 0 0 16px; color: #111; }
+    .art-doc-preview h2 { font-size: 20px; font-weight: 700; margin: 24px 0 10px; color: #222; }
+    .art-doc-preview h3 { font-size: 16px; font-weight: 700; margin: 18px 0 8px; color: #333; }
+    .art-doc-preview p { margin: 0 0 12px; }
+    .art-doc-preview ul, .art-doc-preview ol { margin: 0 0 12px 22px; }
+    .art-doc-preview li { margin-bottom: 4px; }
+    .art-doc-preview strong { font-weight: 700; }
+    .art-doc-preview em { font-style: italic; }
+    .art-doc-preview code { background: #f3f4f6; padding: 1px 5px; border-radius: 3px; font-family: monospace; font-size: 12px; color: #374151; }
+    .art-doc-preview pre { background: #f3f4f6; padding: 12px; border-radius: 6px; overflow-x: auto; margin: 12px 0; }
+    .art-doc-preview pre code { background: none; padding: 0; }
+    .art-doc-preview blockquote { border-left: 3px solid #830051; margin: 12px 0; padding: 8px 16px; color: #555; background: #fdf4f9; }
+    .art-doc-preview hr { border: none; border-top: 1px solid #e5e7eb; margin: 20px 0; }
 
-    #gh-create-section { border-top: 1px solid rgba(255,255,255,0.06); margin-top: 10px; padding-top: 10px; display: none; }
-    #gh-create-section h4 { font-size: 12px; color: #94a3b8; margin-bottom: 8px; }
-    #gh-new-content { width: 100%; background: #0f172a; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: #e2e8f0; font-size: 12px; padding: 6px 10px; resize: vertical; height: 80px; font-family: monospace; outline: none; margin-bottom: 6px; }
-    #gh-new-content:focus { border-color: rgba(131,0,81,0.5); }
+    /* Table preview */
+    .art-table-wrap { padding: 20px; overflow-x: auto; }
+    .art-table { border-collapse: collapse; width: 100%; font-size: 13px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    .art-table th { background: #1e293b; color: #f1f5f9; padding: 10px 14px; text-align: left; font-weight: 600; font-size: 12px; border: 1px solid #334155; }
+    .art-table td { padding: 9px 14px; border: 1px solid #e5e7eb; color: #1a1a1a; vertical-align: top; }
+    .art-table tr:nth-child(even) td { background: #f9fafb; }
+    .art-table tr:hover td { background: #fdf4f9; }
+
+    /* Slide preview */
+    .art-slides-wrap { padding: 16px; background: #0f172a; min-height: 100%; }
+    .art-slide-card { background: #1e293b; border-radius: 12px; padding: 28px 32px; margin: 0 0 16px; border: 1px solid rgba(255,255,255,0.06); }
+    .art-slide-card.title-slide { background: linear-gradient(135deg, #1e293b, #0f172a); border-color: rgba(131,0,81,0.3); text-align: center; padding: 40px 32px; }
+    .art-slide-card h1 { color: #f1f5f9; font-size: 28px; font-weight: 700; margin-bottom: 12px; }
+    .art-slide-card h2 { color: #830051; font-size: 22px; font-weight: 700; margin-bottom: 16px; border-bottom: 2px solid rgba(131,0,81,0.3); padding-bottom: 10px; }
+    .art-slide-card .slide-subtitle { color: #94a3b8; font-size: 14px; }
+    .art-slide-card ul { list-style: none; padding: 0; margin: 0; }
+    .art-slide-card li { color: #e2e8f0; font-size: 14px; line-height: 1.6; padding: 6px 0 6px 20px; position: relative; }
+    .art-slide-card li::before { content: '▸'; color: #830051; position: absolute; left: 0; font-size: 12px; top: 8px; }
+    .art-slide-card .slide-num { font-size: 11px; color: #475569; margin-top: 12px; }
   </style>
   <!-- Office generation libraries -->
   <script src="/libs/docx.umd.js"></script>
@@ -122,15 +222,12 @@
     <button class="gh-btn gh-btn-primary" onclick="ghConnect()">Connect</button>
   </div>
   <div id="gh-status"></div>
-
   <div id="gh-connected" style="display:none">
     <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
       <button class="gh-btn" onclick="ghBrowse('')">📁 Browse Files</button>
       <button class="gh-btn" onclick="ghToggleCreate()">📝 Create / Update File</button>
     </div>
-
     <ul id="gh-file-list" style="display:none"></ul>
-
     <div id="gh-create-section">
       <h4>📝 Create / Update File</h4>
       <div class="gh-input-row">
@@ -143,42 +240,70 @@
   </div>
 </div>
 
-<div id="chat-area">
-  <div class="message assistant">
-    <div class="bubble">Hello! I'm Claude, running through AstraZeneca's AI Gateway. How can I help you today?
+<!-- Main two-panel body -->
+<div id="main-body">
+
+  <!-- Chat Panel -->
+  <div id="chat-panel">
+    <div id="chat-area">
+      <div class="message assistant">
+        <div class="bubble">Hello! I'm Claude, running through AstraZeneca's AI Gateway. How can I help you today?
 
 <em style="color:#64748b;font-size:12px">All conversations route through the AZ gateway on your VPN — nothing leaves AstraZeneca's network.</em></div>
-  </div>
-</div>
+      </div>
+    </div>
 
-<div id="input-area">
-  <div style="max-width:820px;margin:0 auto">
-    <div id="system-toggle" onclick="toggleSystem()">+ Add system prompt</div>
-    <textarea id="system-prompt" placeholder="Optional system prompt — e.g. 'You are a supply chain expert at AstraZeneca...'"></textarea>
+    <div id="input-area">
+      <div style="max-width:820px;margin:0 auto">
+        <div id="system-toggle" onclick="toggleSystem()">+ Add system prompt</div>
+        <textarea id="system-prompt" placeholder="Optional system prompt — e.g. 'You are a supply chain expert at AstraZeneca...'"></textarea>
+      </div>
+      <div id="input-row">
+        <textarea id="message-input" placeholder="Message Claude..." rows="1" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+        <button id="send-btn" onclick="sendMessage()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+      </div>
+    </div>
   </div>
-  <div id="input-row">
-    <textarea id="message-input" placeholder="Message Claude..." rows="1" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
-    <button id="send-btn" onclick="sendMessage()">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-    </button>
+
+  <!-- Artifact Panel -->
+  <div id="artifact-panel">
+    <div id="artifact-header">
+      <div id="artifact-header-left">
+        <span id="artifact-icon">📄</span>
+        <span id="artifact-title">Artifact</span>
+        <span id="artifact-type-badge">Document</span>
+      </div>
+      <button id="artifact-close-btn" onclick="closeArtifact()" title="Close">×</button>
+    </div>
+    <div id="artifact-toolbar">
+      <button class="art-export-btn primary" id="btn-export-word" onclick="artifactExport('word')" title="Download Word document">⬇ Word</button>
+      <button class="art-export-btn" id="btn-export-excel" onclick="artifactExport('excel')" title="Download Excel spreadsheet">⬇ Excel</button>
+      <button class="art-export-btn" id="btn-export-pptx" onclick="artifactExport('pptx')" title="Download PowerPoint">⬇ PowerPoint</button>
+      <button class="art-export-btn" id="btn-export-text" onclick="artifactExport('text')" title="Download plain text">⬇ Text</button>
+    </div>
+    <div id="artifact-preview"></div>
   </div>
-</div>
+
+</div><!-- #main-body -->
 
 <script>
+'use strict';
+
+// ── State ─────────────────────────────────────────────────────────────────────
 let messages = [];
 let isLoading = false;
+let currentArtifact = null; // { type, content, title }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
+// ── Helpers ───────────────────────────────────────────────────────────────────
 function autoResize(el) {
   el.style.height = 'auto';
   el.style.height = Math.min(el.scrollHeight, 200) + 'px';
 }
-
 function handleKey(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 }
-
 function toggleSystem() {
   const sp = document.getElementById('system-prompt');
   const tog = document.getElementById('system-toggle');
@@ -190,13 +315,12 @@ function toggleSystem() {
     tog.textContent = '+ Add system prompt';
   }
 }
-
 function clearChat() {
   messages = [];
   const area = document.getElementById('chat-area');
   area.innerHTML = `<div class="message assistant"><div class="bubble">Chat cleared. How can I help you?</div></div>`;
+  closeArtifact();
 }
-
 function showError(msg) {
   const banner = document.getElementById('error-banner');
   banner.textContent = msg;
@@ -205,127 +329,508 @@ function showError(msg) {
 }
 
 // ── Download helpers ──────────────────────────────────────────────────────────
-
 const LANG_EXT = {
-  python: 'script.py', py: 'script.py',
-  javascript: 'script.js', js: 'script.js', typescript: 'script.ts', ts: 'script.ts',
-  sql: 'query.sql',
-  json: 'data.json',
-  markdown: 'document.md', md: 'document.md',
-  bash: 'script.sh', sh: 'script.sh', shell: 'script.sh',
-  html: 'index.html', css: 'styles.css',
-  yaml: 'config.yaml', yml: 'config.yaml',
-  xml: 'data.xml', csv: 'data.csv',
-  java: 'Main.java', kotlin: 'Main.kt',
-  rust: 'main.rs', go: 'main.go', cpp: 'main.cpp', c: 'main.c',
-  ruby: 'script.rb', php: 'script.php', swift: 'main.swift',
-  r: 'script.r', dockerfile: 'Dockerfile',
+  python:'script.py', py:'script.py',
+  javascript:'script.js', js:'script.js', typescript:'script.ts', ts:'script.ts',
+  sql:'query.sql', json:'data.json',
+  markdown:'document.md', md:'document.md',
+  bash:'script.sh', sh:'script.sh', shell:'script.sh',
+  html:'index.html', css:'styles.css',
+  yaml:'config.yaml', yml:'config.yaml',
+  xml:'data.xml', csv:'data.csv',
+  java:'Main.java', kotlin:'Main.kt',
+  rust:'main.rs', go:'main.go', cpp:'main.cpp', c:'main.c',
+  ruby:'script.rb', php:'script.php', swift:'main.swift',
+  r:'script.r', dockerfile:'Dockerfile',
 };
-
-function inferFilename(lang) {
-  return LANG_EXT[(lang || '').toLowerCase()] || 'output.txt';
-}
-
+function inferFilename(lang) { return LANG_EXT[(lang||'').toLowerCase()] || 'output.txt'; }
 function triggerDownload(filename, text) {
   const blob = new Blob([text], { type: 'text/plain' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-
-// ── Office document generators ────────────────────────────────────────────────
-
-function getDocFilename(content) {
-  return content.slice(0, 30).replace(/[^a-z0-9]/gi, '_').toLowerCase();
+function triggerBlobDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function safeFilename(title) {
+  return (title || 'document').slice(0, 40).replace(/[^a-z0-9\-_]/gi, '_').toLowerCase();
 }
 
-function generateDocx(content, filename) {
-  if (!window.docx) { alert('Word library not loaded. Check your internet connection.'); return; }
-  const { Document, Packer, Paragraph, HeadingLevel } = window.docx;
+// ── Markdown → HTML (for preview) ────────────────────────────────────────────
+function mdToHtml(md) {
+  if (!md) return '';
+  const lines = md.split('\n');
+  const out = [];
+  let inUl = false, inOl = false, inPre = false, preLines = [];
+
+  function closeList() {
+    if (inUl) { out.push('</ul>'); inUl = false; }
+    if (inOl) { out.push('</ol>'); inOl = false; }
+  }
+
+  function inlineFormat(text) {
+    return text
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      .replace(/~~(.+?)~~/g, '<del>$1</del>');
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
+
+    // Fenced code blocks
+    if (raw.startsWith('```')) {
+      if (!inPre) {
+        closeList();
+        inPre = true;
+        preLines = [];
+      } else {
+        out.push('<pre><code>' + preLines.map(l => l.replace(/</g,'&lt;').replace(/>/g,'&gt;')).join('\n') + '</code></pre>');
+        inPre = false;
+        preLines = [];
+      }
+      continue;
+    }
+    if (inPre) { preLines.push(raw); continue; }
+
+    const line = raw;
+
+    // Headings
+    if (/^### (.+)/.test(line)) { closeList(); out.push(`<h3>${inlineFormat(line.slice(4))}</h3>`); continue; }
+    if (/^## (.+)/.test(line))  { closeList(); out.push(`<h2>${inlineFormat(line.slice(3))}</h2>`); continue; }
+    if (/^# (.+)/.test(line))   { closeList(); out.push(`<h1>${inlineFormat(line.slice(2))}</h1>`); continue; }
+
+    // HR
+    if (/^(---+|\*\*\*+)$/.test(line.trim())) { closeList(); out.push('<hr>'); continue; }
+
+    // Blockquote
+    if (/^> /.test(line)) { closeList(); out.push(`<blockquote>${inlineFormat(line.slice(2))}</blockquote>`); continue; }
+
+    // Unordered list
+    if (/^[\-\*\+] (.+)/.test(line)) {
+      if (inOl) { out.push('</ol>'); inOl = false; }
+      if (!inUl) { out.push('<ul>'); inUl = true; }
+      out.push(`<li>${inlineFormat(line.replace(/^[\-\*\+] /, ''))}</li>`);
+      continue;
+    }
+
+    // Ordered list
+    if (/^\d+\. (.+)/.test(line)) {
+      if (inUl) { out.push('</ul>'); inUl = false; }
+      if (!inOl) { out.push('<ol>'); inOl = true; }
+      out.push(`<li>${inlineFormat(line.replace(/^\d+\. /, ''))}</li>`);
+      continue;
+    }
+
+    // Empty line
+    if (line.trim() === '') {
+      closeList();
+      out.push('<br>');
+      continue;
+    }
+
+    // Normal paragraph
+    closeList();
+    out.push(`<p>${inlineFormat(line)}</p>`);
+  }
+  closeList();
+  return out.join('\n');
+}
+
+// ── Artifact detection ────────────────────────────────────────────────────────
+function detectArtifactType(content) {
+  if (!content) return null;
+
+  // Skip if primarily a code block response
+  const codeBlockCount = (content.match(/```/g) || []).length / 2;
+  const nonCodeContent = content.replace(/```[\s\S]*?```/g, '').trim();
+  if (codeBlockCount >= 1 && nonCodeContent.length < 100) return null;
+
+  // Count ## headings
+  const h2Matches = content.match(/^## .+/gm) || [];
+  const h1Matches = content.match(/^# .+/gm) || [];
+
+  // Table: multiple lines with | separators
+  const tableLines = content.split('\n').filter(l => l.trim().startsWith('|') && l.trim().endsWith('|'));
+  if (tableLines.length >= 3) return 'table';
+
+  // Presentation: 2+ ## headings
+  if (h2Matches.length >= 2) return 'presentation';
+
+  // Document: has headings OR is long
+  const wordCount = content.split(/\s+/).filter(Boolean).length;
+  if (h1Matches.length >= 1 || h2Matches.length >= 1 || wordCount > 300) return 'document';
+
+  return null;
+}
+
+function extractTitle(content, type) {
+  // Try # heading first
+  const h1 = content.match(/^# (.+)$/m);
+  if (h1) return h1[1].trim();
+  const h2 = content.match(/^## (.+)$/m);
+  if (h2) return h2[1].trim();
+  // First meaningful line
+  const first = content.split('\n').find(l => l.trim().length > 3);
+  if (first) return first.trim().slice(0, 50);
+  return type === 'table' ? 'Table' : type === 'presentation' ? 'Presentation' : 'Document';
+}
+
+// ── Artifact Panel ────────────────────────────────────────────────────────────
+const TYPE_ICONS = { document: '📄', table: '📊', presentation: '📑' };
+const TYPE_LABELS = { document: 'Document', table: 'Table', presentation: 'Presentation' };
+
+function showArtifact(type, content, title) {
+  currentArtifact = { type, content, title };
+
+  document.getElementById('artifact-icon').textContent = TYPE_ICONS[type] || '📄';
+  document.getElementById('artifact-title').textContent = title;
+  document.getElementById('artifact-type-badge').textContent = TYPE_LABELS[type] || type;
+
+  // Show/dim export buttons based on type
+  document.getElementById('btn-export-word').disabled   = (type === 'table');
+  document.getElementById('btn-export-excel').disabled  = (type !== 'table');
+  document.getElementById('btn-export-pptx').disabled   = (type !== 'presentation');
+
+  renderArtifactPreview(type, content);
+
+  const panel = document.getElementById('artifact-panel');
+  if (!panel.classList.contains('open')) {
+    panel.classList.add('open');
+  }
+}
+
+function closeArtifact() {
+  currentArtifact = null;
+  document.getElementById('artifact-panel').classList.remove('open');
+  document.getElementById('artifact-preview').innerHTML = '';
+}
+
+function renderArtifactPreview(type, content) {
+  const preview = document.getElementById('artifact-preview');
+  preview.innerHTML = '';
+
+  if (type === 'document') {
+    const wrap = document.createElement('div');
+    wrap.className = 'art-doc-preview';
+    wrap.innerHTML = mdToHtml(content);
+    preview.appendChild(wrap);
+  }
+
+  else if (type === 'table') {
+    const wrap = document.createElement('div');
+    wrap.className = 'art-table-wrap';
+    const lines = content.split('\n').filter(l => l.trim().startsWith('|') && l.trim().endsWith('|'));
+    const rows = lines
+      .filter(l => !l.match(/^\|[\s\-|:]+\|$/))
+      .map(l => l.split('|').slice(1, -1).map(c => c.trim()));
+    if (rows.length === 0) { wrap.textContent = 'No table found.'; preview.appendChild(wrap); return; }
+    const table = document.createElement('table');
+    table.className = 'art-table';
+    rows.forEach((row, ri) => {
+      const tr = document.createElement('tr');
+      row.forEach(cell => {
+        const td = document.createElement(ri === 0 ? 'th' : 'td');
+        td.textContent = cell;
+        tr.appendChild(td);
+      });
+      table.appendChild(tr);
+    });
+    wrap.appendChild(table);
+    preview.appendChild(wrap);
+  }
+
+  else if (type === 'presentation') {
+    const wrap = document.createElement('div');
+    wrap.className = 'art-slides-wrap';
+
+    // Title slide using first # heading or title
+    const h1Match = content.match(/^# (.+)$/m);
+    const titleText = h1Match ? h1Match[1].trim() : (currentArtifact && currentArtifact.title) || 'Presentation';
+
+    const titleCard = document.createElement('div');
+    titleCard.className = 'art-slide-card title-slide';
+    titleCard.innerHTML = `<h1>${titleText}</h1><div class="slide-subtitle">AstraZeneca</div>`;
+    wrap.appendChild(titleCard);
+
+    // Split on ## headings
+    const sections = content.split(/(?=^## )/m).filter(s => s.trim().startsWith('## '));
+    sections.forEach((section, idx) => {
+      const secLines = section.split('\n');
+      const slideTitle = secLines[0].replace(/^## /, '').trim();
+      const bodyLines = secLines.slice(1);
+
+      const card = document.createElement('div');
+      card.className = 'art-slide-card';
+
+      const h2 = document.createElement('h2');
+      h2.textContent = slideTitle;
+      card.appendChild(h2);
+
+      const ul = document.createElement('ul');
+      let hasItems = false;
+      bodyLines.forEach(line => {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) return;
+        const li = document.createElement('li');
+        // Strip list markers
+        li.textContent = trimmed.replace(/^[\-\*\+]\s*/, '').replace(/^\d+\.\s*/, '');
+        ul.appendChild(li);
+        hasItems = true;
+      });
+      if (hasItems) card.appendChild(ul);
+
+      const num = document.createElement('div');
+      num.className = 'slide-num';
+      num.textContent = `Slide ${idx + 2}`;
+      card.appendChild(num);
+
+      wrap.appendChild(card);
+    });
+    preview.appendChild(wrap);
+  }
+}
+
+// ── Export functions ──────────────────────────────────────────────────────────
+function artifactExport(format) {
+  if (!currentArtifact) return;
+  const { type, content, title } = currentArtifact;
+  const fname = safeFilename(title);
+
+  if (format === 'text') {
+    triggerDownload(fname + '.txt', content);
+    return;
+  }
+
+  if (format === 'word') {
+    exportDocx(content, fname, title);
+  } else if (format === 'excel') {
+    exportXlsx(content, fname);
+  } else if (format === 'pptx') {
+    exportPptx(content, fname, title);
+  }
+}
+
+function exportDocx(content, fname, docTitle) {
+  if (!window.docx) { alert('Word library not loaded — use Text export instead.'); return; }
+  const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } = window.docx;
+
+  const children = [];
   const lines = content.split('\n');
-  const children = lines.map(line => {
-    if (line.startsWith('# '))   return new Paragraph({ text: line.slice(2),  heading: HeadingLevel.HEADING_1 });
-    if (line.startsWith('## '))  return new Paragraph({ text: line.slice(3),  heading: HeadingLevel.HEADING_2 });
-    if (line.startsWith('### ')) return new Paragraph({ text: line.slice(4),  heading: HeadingLevel.HEADING_3 });
-    if (line.startsWith('- ') || line.startsWith('* ')) return new Paragraph({ text: line.slice(2), bullet: { level: 0 } });
-    if (line.trim() === '') return new Paragraph({ text: '' });
-    return new Paragraph({ text: line });
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    if (line.startsWith('### ')) {
+      children.push(new Paragraph({ text: line.slice(4), heading: HeadingLevel.HEADING_3, spacing: { before: 200, after: 100 } }));
+    } else if (line.startsWith('## ')) {
+      children.push(new Paragraph({ text: line.slice(3), heading: HeadingLevel.HEADING_2, spacing: { before: 300, after: 120 } }));
+    } else if (line.startsWith('# ')) {
+      children.push(new Paragraph({ text: line.slice(2), heading: HeadingLevel.HEADING_1, spacing: { before: 400, after: 200 } }));
+    } else if (/^[\-\*\+] /.test(line)) {
+      const text = line.replace(/^[\-\*\+] /, '');
+      children.push(new Paragraph({
+        children: parseBoldRuns(text, TextRun),
+        bullet: { level: 0 },
+        spacing: { before: 60, after: 60 },
+      }));
+    } else if (/^\d+\. /.test(line)) {
+      const text = line.replace(/^\d+\. /, '');
+      children.push(new Paragraph({
+        children: parseBoldRuns(text, TextRun),
+        numbering: { reference: 'default-numbering', level: 0 },
+        spacing: { before: 60, after: 60 },
+      }));
+    } else if (line.trim() === '') {
+      children.push(new Paragraph({ text: '', spacing: { before: 100, after: 100 } }));
+    } else {
+      children.push(new Paragraph({
+        children: parseBoldRuns(line, TextRun),
+        spacing: { before: 80, after: 80 },
+      }));
+    }
+  }
+
+  const doc = new Document({
+    sections: [{
+      properties: {
+        page: {
+          margin: { top: 1440, bottom: 1440, left: 1440, right: 1440 }, // 1 inch = 1440 twips
+        },
+      },
+      children,
+    }],
   });
-  const doc = new Document({ sections: [{ children }] });
-  Packer.toBlob(doc).then(blob => {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = filename + '.docx';
-    document.body.appendChild(a); a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  });
+
+  Packer.toBlob(doc).then(blob => triggerBlobDownload(blob, fname + '.docx'));
 }
 
-function generateXlsx(content, filename) {
-  if (!window.XLSX) { alert('Excel library not loaded. Check your internet connection.'); return; }
-  const lines = content.split('\n').filter(l => l.trim().startsWith('|'));
+function parseBoldRuns(text, TextRun) {
+  // Split on **bold** patterns
+  const runs = [];
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  parts.forEach(part => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      runs.push(new TextRun({ text: part.slice(2, -2), bold: true }));
+    } else if (part) {
+      runs.push(new TextRun({ text: part }));
+    }
+  });
+  return runs.length > 0 ? runs : [new TextRun({ text })];
+}
+
+function exportXlsx(content, fname) {
+  if (!window.XLSX) { alert('Excel library not loaded — use Text export instead.'); return; }
+  const lines = content.split('\n').filter(l => l.trim().startsWith('|') && l.trim().endsWith('|'));
   const rows = lines
-    .filter(l => !l.match(/^\|[\s\-|]+\|$/))
+    .filter(l => !l.match(/^\|[\s\-|:]+\|$/))
     .map(l => l.split('|').slice(1, -1).map(c => c.trim()));
-  if (rows.length === 0) { alert('No table found in response.'); return; }
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
-  XLSX.writeFile(wb, filename + '.xlsx');
-}
+  if (rows.length === 0) { alert('No table found.'); return; }
 
-function generatePptx(content, filename) {
-  if (typeof PptxGenJS === 'undefined') { alert('PowerPoint library not loaded. Check your internet connection.'); return; }
-  const pptx = new PptxGenJS();
-  const sections = content.split(/^## /m).filter(Boolean);
-  if (sections.length === 0) {
-    // Fallback: single slide with all content
-    const slide = pptx.addSlide();
-    slide.addText(filename, { x: 0.5, y: 0.5, w: 9, h: 1.2, fontSize: 28, bold: true, color: '830051' });
-    slide.addText(content.slice(0, 500), { x: 0.5, y: 2, w: 9, h: 4, fontSize: 14, color: '333333' });
-  } else {
-    sections.forEach(section => {
-      const lines = section.split('\n');
-      const title = lines[0].trim();
-      const bullets = lines.slice(1)
-        .filter(l => l.trim() && !l.startsWith('#'))
-        .map(l => l.replace(/^[-*]\s*/, '').trim())
-        .filter(Boolean);
-      const slide = pptx.addSlide();
-      slide.addText(title, { x: 0.5, y: 0.5, w: 9, h: 1.2, fontSize: 28, bold: true, color: '830051' });
-      if (bullets.length > 0) {
-        slide.addText(bullets.map(b => ({ text: b, options: { bullet: true } })),
-          { x: 0.5, y: 2, w: 9, h: 4, fontSize: 18, color: '333333' });
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+
+  // Auto-size columns
+  const colWidths = rows[0].map((_, ci) =>
+    Math.min(40, Math.max(10, ...rows.map(row => (row[ci] || '').length + 2)))
+  );
+  ws['!cols'] = colWidths.map(w => ({ wch: w }));
+
+  // Freeze top row
+  ws['!freeze'] = { xSplit: 0, ySplit: 1 };
+
+  // Bold header row styling (basic)
+  if (rows.length > 0) {
+    rows[0].forEach((_, ci) => {
+      const cellRef = XLSX.utils.encode_cell({ r: 0, c: ci });
+      if (ws[cellRef]) {
+        ws[cellRef].s = { font: { bold: true }, fill: { fgColor: { rgb: '1E293B' } } };
       }
     });
   }
-  pptx.writeFile({ fileName: filename + '.pptx' });
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Data');
+  XLSX.writeFile(wb, fname + '.xlsx');
 }
 
-// ── Render assistant message ──────────────────────────────────────────────────
+function exportPptx(content, fname, docTitle) {
+  if (typeof PptxGenJS === 'undefined') { alert('PowerPoint library not loaded — use Text export instead.'); return; }
+  const pptx = new PptxGenJS();
+  pptx.layout = 'LAYOUT_16x9';
+  pptx.author = 'AstraZeneca';
+  pptx.company = 'AstraZeneca';
 
+  // Title slide
+  const titleSlide = pptx.addSlide();
+  titleSlide.background = { color: 'FFFFFF' };
+  titleSlide.addShape(pptx.ShapeType.rect, { x: 0, y: 3.5, w: 10, h: 0.06, fill: { color: '830051' } });
+  titleSlide.addText(docTitle || fname, {
+    x: 0.5, y: 1.2, w: 9, h: 1.6,
+    fontSize: 36, bold: true, color: '1e293b',
+    align: 'center', valign: 'middle',
+    fontFace: 'Calibri',
+  });
+  titleSlide.addText('AstraZeneca', {
+    x: 0.5, y: 4.0, w: 9, h: 0.5,
+    fontSize: 16, color: '830051', align: 'center', fontFace: 'Calibri',
+  });
+
+  // Content slides from ## sections
+  const sections = content.split(/(?=^## )/m).filter(s => s.trim().startsWith('## '));
+
+  if (sections.length === 0) {
+    // Single content slide
+    const slide = pptx.addSlide();
+    slide.background = { color: 'FFFFFF' };
+    slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 10, h: 0.07, fill: { color: '830051' } });
+    slide.addText(docTitle || 'Content', {
+      x: 0.5, y: 0.3, w: 9, h: 0.8,
+      fontSize: 28, bold: true, color: '830051', fontFace: 'Calibri',
+    });
+    const bodyText = content.replace(/^# .+$/m, '').trim().slice(0, 800);
+    slide.addText(bodyText, {
+      x: 0.5, y: 1.3, w: 9, h: 4.5,
+      fontSize: 14, color: '1a1a1a', fontFace: 'Calibri', valign: 'top',
+    });
+  } else {
+    sections.forEach(section => {
+      const secLines = section.split('\n');
+      const slideTitle = secLines[0].replace(/^## /, '').trim();
+      const bodyLines = secLines.slice(1).filter(l => l.trim());
+
+      // Separate bullets from text
+      const bullets = bodyLines.filter(l => /^[\-\*\+\d]/.test(l.trim()));
+      const paragraphs = bodyLines.filter(l => l.trim() && !/^[\-\*\+\d]/.test(l.trim()) && !l.startsWith('#'));
+
+      const slide = pptx.addSlide();
+      slide.background = { color: 'FFFFFF' };
+      // Top accent bar
+      slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 10, h: 0.07, fill: { color: '830051' } });
+
+      // Slide title
+      slide.addText(slideTitle, {
+        x: 0.5, y: 0.2, w: 9, h: 0.85,
+        fontSize: 26, bold: true, color: '830051', fontFace: 'Calibri',
+      });
+
+      // Content
+      let yPos = 1.2;
+      const contentLines = bullets.length > 0 ? bullets : paragraphs;
+      if (contentLines.length > 0) {
+        const textObjs = contentLines.map(line => ({
+          text: line.replace(/^[\-\*\+]\s*/, '').replace(/^\d+\.\s*/, '').replace(/\*\*(.+?)\*\*/g, '$1').trim(),
+          options: {
+            bullet: bullets.length > 0 ? { type: 'bullet', code: '2022', color: '830051' } : false,
+            fontSize: 16,
+            color: '1e293b',
+            fontFace: 'Calibri',
+            breakLine: true,
+          },
+        }));
+        slide.addText(textObjs, { x: 0.5, y: yPos, w: 9, h: 4.5, valign: 'top' });
+      }
+
+      // Slide number (bottom right)
+      const idx = sections.indexOf(section) + 2;
+      slide.addText(String(idx), {
+        x: 9.3, y: 6.8, w: 0.5, h: 0.3,
+        fontSize: 10, color: 'aaaaaa', align: 'right',
+      });
+    });
+  }
+
+  pptx.writeFile({ fileName: fname + '.pptx' });
+}
+
+// ── Existing per-message export helpers (kept for backward compat) ─────────────
+function getDocFilename(content) {
+  return content.slice(0, 30).replace(/[^a-z0-9]/gi, '_').toLowerCase();
+}
+function generateDocx(content, filename) { exportDocx(content, filename, filename.replace(/_/g,' ')); }
+function generateXlsx(content, filename) { exportXlsx(content, filename); }
+function generatePptx(content, filename) { exportPptx(content, filename, filename.replace(/_/g,' ')); }
+
+// ── Render assistant message ──────────────────────────────────────────────────
 function renderAssistantContent(content) {
-  // Split content on fenced code blocks, keeping the blocks
   const parts = [];
   const codeRe = /```(\w*)\n([\s\S]*?)```/g;
-  let last = 0;
-  let match;
+  let last = 0, match;
   while ((match = codeRe.exec(content)) !== null) {
-    if (match.index > last) {
-      parts.push({ type: 'text', value: content.slice(last, match.index) });
-    }
+    if (match.index > last) parts.push({ type: 'text', value: content.slice(last, match.index) });
     parts.push({ type: 'code', lang: match[1], code: match[2] });
     last = match.index + match[0].length;
   }
-  if (last < content.length) {
-    parts.push({ type: 'text', value: content.slice(last) });
-  }
+  if (last < content.length) parts.push({ type: 'text', value: content.slice(last) });
 
   const wrapper = document.createElement('div');
 
@@ -334,31 +839,25 @@ function renderAssistantContent(content) {
       const span = document.createElement('span');
       let html = p.value
         .replace(/`([^`]+)`/g, '<code>$1</code>')
-        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\*(.*?)\*/g, '<em>$1</em>');
-      // Preserve newlines outside code blocks
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>');
       span.innerHTML = html.replace(/\n/g, '<br>');
       wrapper.appendChild(span);
     } else {
-      // Code block wrapper
       const blockWrap = document.createElement('div');
       blockWrap.className = 'code-block-wrap';
-
       const pre = document.createElement('pre');
       const codeEl = document.createElement('code');
       codeEl.textContent = p.code;
       pre.appendChild(codeEl);
       blockWrap.appendChild(pre);
-
-      // Download button for code block
       const fname = inferFilename(p.lang);
       const dlBtn = document.createElement('button');
       dlBtn.className = 'code-dl-btn';
       dlBtn.textContent = `⬇ Download ${fname}`;
-      const codeSnapshot = p.code;
-      dlBtn.onclick = () => triggerDownload(fname, codeSnapshot);
+      const snap = p.code;
+      dlBtn.onclick = () => triggerDownload(fname, snap);
       blockWrap.appendChild(dlBtn);
-
       wrapper.appendChild(blockWrap);
     }
   });
@@ -367,7 +866,6 @@ function renderAssistantContent(content) {
 }
 
 // ── addMessage ────────────────────────────────────────────────────────────────
-
 function addMessage(role, content) {
   const area = document.getElementById('chat-area');
   const div = document.createElement('div');
@@ -379,18 +877,13 @@ function addMessage(role, content) {
     bubble.textContent = content;
     div.appendChild(bubble);
   } else {
-    // Assistant: rendered with download buttons
     const bubble = document.createElement('div');
     bubble.className = 'bubble';
     bubble.appendChild(renderAssistantContent(content));
     div.appendChild(bubble);
 
-    // Action row: Copy + Download as .txt
     const actRow = document.createElement('div');
-    actRow.style.display = 'flex';
-    actRow.style.alignItems = 'center';
-    actRow.style.gap = '4px';
-    actRow.style.marginTop = '4px';
+    actRow.style.cssText = 'display:flex;align-items:center;gap:4px;margin-top:4px;flex-wrap:wrap';
 
     const copyBtn = document.createElement('button');
     copyBtn.className = 'copy-btn';
@@ -403,37 +896,28 @@ function addMessage(role, content) {
 
     const dlTxtBtn = document.createElement('button');
     dlTxtBtn.className = 'dl-txt-btn';
-    dlTxtBtn.textContent = '⬇ Download as .txt';
+    dlTxtBtn.textContent = '⬇ .txt';
     dlTxtBtn.onclick = () => triggerDownload('response.txt', content);
-
-    const fname = getDocFilename(content);
-
-    const dlWordBtn = document.createElement('button');
-    dlWordBtn.className = 'dl-txt-btn';
-    dlWordBtn.textContent = '⬇ Word';
-    dlWordBtn.title = 'Download as Word (.docx)';
-    dlWordBtn.onclick = () => generateDocx(content, fname);
-    if (!window.docx) dlWordBtn.style.opacity = '0.4';
-
-    const dlXlsxBtn = document.createElement('button');
-    dlXlsxBtn.className = 'dl-txt-btn';
-    dlXlsxBtn.textContent = '⬇ Excel';
-    dlXlsxBtn.title = 'Download as Excel (.xlsx)';
-    dlXlsxBtn.onclick = () => generateXlsx(content, fname);
-    if (!window.XLSX) dlXlsxBtn.style.opacity = '0.4';
-
-    const dlPptxBtn = document.createElement('button');
-    dlPptxBtn.className = 'dl-txt-btn';
-    dlPptxBtn.textContent = '⬇ PowerPoint';
-    dlPptxBtn.title = 'Download as PowerPoint (.pptx)';
-    dlPptxBtn.onclick = () => generatePptx(content, fname);
-    if (typeof PptxGenJS === 'undefined') dlPptxBtn.style.opacity = '0.4';
 
     actRow.appendChild(copyBtn);
     actRow.appendChild(dlTxtBtn);
-    actRow.appendChild(dlWordBtn);
-    actRow.appendChild(dlXlsxBtn);
-    actRow.appendChild(dlPptxBtn);
+
+    // Show artifact panel button if applicable
+    const artType = detectArtifactType(content);
+    if (artType) {
+      const artBtn = document.createElement('button');
+      artBtn.className = 'dl-txt-btn';
+      artBtn.style.cssText = 'background:rgba(131,0,81,0.15);border-color:rgba(131,0,81,0.4);color:#f1a3c8;';
+      artBtn.textContent = `${TYPE_ICONS[artType]} Open in Artifact Panel`;
+      const snapContent = content;
+      const snapType = artType;
+      artBtn.onclick = () => {
+        const title = extractTitle(snapContent, snapType);
+        showArtifact(snapType, snapContent, title);
+      };
+      actRow.appendChild(artBtn);
+    }
+
     div.appendChild(actRow);
   }
 
@@ -442,7 +926,6 @@ function addMessage(role, content) {
 }
 
 // ── Thinking indicator ────────────────────────────────────────────────────────
-
 function showThinking() {
   const area = document.getElementById('chat-area');
   const div = document.createElement('div');
@@ -452,14 +935,12 @@ function showThinking() {
   area.appendChild(div);
   area.scrollTop = area.scrollHeight;
 }
-
 function removeThinking() {
   const t = document.getElementById('thinking');
   if (t) t.remove();
 }
 
 // ── Send message ──────────────────────────────────────────────────────────────
-
 async function sendMessage() {
   if (isLoading) return;
   const input = document.getElementById('message-input');
@@ -486,8 +967,18 @@ async function sendMessage() {
     const data = await resp.json();
     removeThinking();
     if (data.error) { showError(data.error); messages.pop(); return; }
-    messages.push({ role: 'assistant', content: data.content });
-    addMessage('assistant', data.content);
+
+    const assistantContent = data.content;
+    messages.push({ role: 'assistant', content: assistantContent });
+    addMessage('assistant', assistantContent);
+
+    // Auto-detect and show artifact
+    const artType = detectArtifactType(assistantContent);
+    if (artType) {
+      const artTitle = extractTitle(assistantContent, artType);
+      showArtifact(artType, assistantContent, artTitle);
+    }
+
   } catch (e) {
     removeThinking();
     showError('Connection error — make sure you are on AZ VPN');
@@ -500,13 +991,11 @@ async function sendMessage() {
 }
 
 // ── GitHub Panel ──────────────────────────────────────────────────────────────
-
 const GITHUB_API = 'https://api.github.com';
 
-// Persist token / repo / branch in localStorage
 function ghLoad() {
-  const token = localStorage.getItem('gh_token') || '';
-  const repo  = localStorage.getItem('gh_repo')  || '';
+  const token  = localStorage.getItem('gh_token')  || '';
+  const repo   = localStorage.getItem('gh_repo')   || '';
   const branch = localStorage.getItem('gh_branch') || 'main';
   if (token)  document.getElementById('gh-token').value  = token;
   if (repo)   document.getElementById('gh-repo').value   = repo;
@@ -525,11 +1014,7 @@ function toggleGitHub() {
 
 function ghHeaders() {
   const token = document.getElementById('gh-token').value.trim();
-  return {
-    'Authorization': `Bearer ${token}`,
-    'Accept': 'application/vnd.github+json',
-    'X-GitHub-Api-Version': '2022-11-28',
-  };
+  return { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
 }
 
 function ghSetStatus(msg, type) {
@@ -542,41 +1027,31 @@ async function ghConnect() {
   const token  = document.getElementById('gh-token').value.trim();
   const repo   = document.getElementById('gh-repo').value.trim();
   const branch = document.getElementById('gh-branch').value.trim() || 'main';
-
   if (!token || !repo) { ghSetStatus('⚠ Token and repo are required.', 'err'); return; }
   localStorage.setItem('gh_token', token);
   localStorage.setItem('gh_repo', repo);
   localStorage.setItem('gh_branch', branch);
-
   ghSetStatus('Connecting…');
-
   try {
     const r = await fetch(`${GITHUB_API}/repos/${repo}`, { headers: ghHeaders() });
     if (!r.ok) { const d = await r.json(); ghSetStatus(`✗ ${d.message}`, 'err'); return; }
     const d = await r.json();
     ghSetStatus(`✓ Connected: ${d.full_name} [${branch}]`, 'ok');
     document.getElementById('gh-connected').style.display = 'block';
-  } catch (e) {
-    ghSetStatus(`✗ Network error: ${e.message}`, 'err');
-  }
+  } catch (e) { ghSetStatus(`✗ Network error: ${e.message}`, 'err'); }
 }
 
 async function ghBrowse(path) {
   const repo   = document.getElementById('gh-repo').value.trim();
   const branch = document.getElementById('gh-branch').value.trim() || 'main';
   const list   = document.getElementById('gh-file-list');
-
   list.style.display = 'block';
   list.innerHTML = '<li style="color:#64748b">Loading…</li>';
-
   try {
-    const url = `${GITHUB_API}/repos/${repo}/contents/${path}?ref=${encodeURIComponent(branch)}`;
-    const r = await fetch(url, { headers: ghHeaders() });
+    const r = await fetch(`${GITHUB_API}/repos/${repo}/contents/${path}?ref=${encodeURIComponent(branch)}`, { headers: ghHeaders() });
     if (!r.ok) { const d = await r.json(); list.innerHTML = `<li style="color:#f87171">${d.message}</li>`; return; }
     const items = await r.json();
-
     list.innerHTML = '';
-    // Add back-navigation if in a subdirectory
     if (path) {
       const parent = path.split('/').slice(0, -1).join('/');
       const back = document.createElement('li');
@@ -584,39 +1059,27 @@ async function ghBrowse(path) {
       back.onclick = () => ghBrowse(parent);
       list.appendChild(back);
     }
-    items.sort((a,b) => {
-      if (a.type === b.type) return a.name.localeCompare(b.name);
-      return a.type === 'dir' ? -1 : 1;
-    }).forEach(item => {
+    items.sort((a,b) => a.type===b.type ? a.name.localeCompare(b.name) : a.type==='dir'?-1:1)
+    .forEach(item => {
       const li = document.createElement('li');
-      const icon = item.type === 'dir' ? '📁' : '📄';
-      li.innerHTML = `<span class="fi">${icon}</span> ${item.name}`;
-      if (item.type === 'dir') {
-        li.onclick = () => ghBrowse(item.path);
-      } else {
-        li.onclick = () => ghLoadFile(item.path, item.name);
-      }
+      li.innerHTML = `<span class="fi">${item.type==='dir'?'📁':'📄'}</span> ${item.name}`;
+      if (item.type === 'dir') { li.onclick = () => ghBrowse(item.path); }
+      else { li.onclick = () => ghLoadFile(item.path, item.name); }
       list.appendChild(li);
     });
-  } catch (e) {
-    list.innerHTML = `<li style="color:#f87171">Error: ${e.message}</li>`;
-  }
+  } catch (e) { list.innerHTML = `<li style="color:#f87171">Error: ${e.message}</li>`; }
 }
 
 async function ghLoadFile(filePath, fileName) {
   const repo   = document.getElementById('gh-repo').value.trim();
   const branch = document.getElementById('gh-branch').value.trim() || 'main';
-
   ghSetStatus(`Loading ${fileName}…`);
   try {
-    const url = `${GITHUB_API}/repos/${repo}/contents/${filePath}?ref=${encodeURIComponent(branch)}`;
-    const r = await fetch(url, { headers: ghHeaders() });
+    const r = await fetch(`${GITHUB_API}/repos/${repo}/contents/${filePath}?ref=${encodeURIComponent(branch)}`, { headers: ghHeaders() });
     if (!r.ok) { const d = await r.json(); ghSetStatus(`✗ ${d.message}`, 'err'); return; }
     const data = await r.json();
     const content = atob(data.content.replace(/\n/g, ''));
     ghSetStatus(`✓ Loaded ${fileName}`, 'ok');
-
-    // Insert into message input
     const input = document.getElementById('message-input');
     const ext = fileName.split('.').pop().toLowerCase();
     const langHint = Object.entries(LANG_EXT).find(([,v]) => v.endsWith(`.${ext}`));
@@ -625,44 +1088,28 @@ async function ghLoadFile(filePath, fileName) {
     autoResize(input);
     input.focus();
     input.setSelectionRange(input.value.length, input.value.length);
-  } catch (e) {
-    ghSetStatus(`✗ Error: ${e.message}`, 'err');
-  }
+  } catch (e) { ghSetStatus(`✗ Error: ${e.message}`, 'err'); }
 }
 
 function ghToggleCreate() {
   const sec = document.getElementById('gh-create-section');
-  sec.style.display = sec.style.display === 'none' || !sec.style.display ? 'block' : 'none';
+  sec.style.display = sec.style.display==='none'||!sec.style.display ? 'block' : 'none';
 }
 
 async function ghPushFile() {
-  const repo      = document.getElementById('gh-repo').value.trim();
-  const branch    = document.getElementById('gh-branch').value.trim() || 'main';
-  const filePath  = document.getElementById('gh-new-path').value.trim();
+  const repo       = document.getElementById('gh-repo').value.trim();
+  const branch     = document.getElementById('gh-branch').value.trim() || 'main';
+  const filePath   = document.getElementById('gh-new-path').value.trim();
   const newContent = document.getElementById('gh-new-content').value;
-  const commitMsg = document.getElementById('gh-commit-msg').value.trim() || `Update ${filePath}`;
-
+  const commitMsg  = document.getElementById('gh-commit-msg').value.trim() || `Update ${filePath}`;
   if (!filePath) { ghSetStatus('⚠ File path required.', 'err'); return; }
-
   ghSetStatus('Pushing…');
-
   try {
-    // Check if file exists to get sha
     let sha;
-    const checkUrl = `${GITHUB_API}/repos/${repo}/contents/${filePath}?ref=${encodeURIComponent(branch)}`;
-    const check = await fetch(checkUrl, { headers: ghHeaders() });
-    if (check.ok) {
-      const existing = await check.json();
-      sha = existing.sha;
-    }
-
-    const body = {
-      message: commitMsg,
-      content: btoa(unescape(encodeURIComponent(newContent))),
-      branch,
-    };
+    const check = await fetch(`${GITHUB_API}/repos/${repo}/contents/${filePath}?ref=${encodeURIComponent(branch)}`, { headers: ghHeaders() });
+    if (check.ok) { const existing = await check.json(); sha = existing.sha; }
+    const body = { message: commitMsg, content: btoa(unescape(encodeURIComponent(newContent))), branch };
     if (sha) body.sha = sha;
-
     const r = await fetch(`${GITHUB_API}/repos/${repo}/contents/${filePath}`, {
       method: 'PUT',
       headers: { ...ghHeaders(), 'Content-Type': 'application/json' },
@@ -671,13 +1118,10 @@ async function ghPushFile() {
     const data = await r.json();
     if (!r.ok) { ghSetStatus(`✗ ${data.message}`, 'err'); return; }
     ghSetStatus(`✓ Pushed: ${filePath}`, 'ok');
-    // Clear form
     document.getElementById('gh-new-path').value = '';
     document.getElementById('gh-new-content').value = '';
     document.getElementById('gh-commit-msg').value = '';
-  } catch (e) {
-    ghSetStatus(`✗ Error: ${e.message}`, 'err');
-  }
+  } catch (e) { ghSetStatus(`✗ Error: ${e.message}`, 'err'); }
 }
 </script>
 </body>
