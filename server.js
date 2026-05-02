@@ -10,6 +10,7 @@ const app = express();
 const PORT = process.env.PORT || 3737;
 
 app.use(express.json({ limit: '10mb' }));
+app.use((req, res, next) => { if (req.path.startsWith('/api')) console.log('[REQ]', req.method, req.path); next(); });
 app.use(express.static(join(__dirname, 'public')));
 
 // Proxy Claude requests through AZ gateway
@@ -19,10 +20,11 @@ app.post('/api/chat', async (req, res) => {
   const model = process.env.CLAUDE_MODEL || 'us.anthropic.claude-opus-4-5-20251101-v1:0';
   const apiKey = process.env.AI_GATEWAY_KEY || process.env.AWS_BEARER_TOKEN_BEDROCK || process.env.ANTHROPIC_API_KEY || '';
 
+  console.log('[CHAT] apiKey length:', apiKey.length, 'starts:', apiKey.slice(0,4));
+  console.log('[CHAT] gatewayBase:', gatewayBase);
   if (!apiKey) {
     return res.status(500).json({ error: 'AI_GATEWAY_KEY not set in .env file.' });
   }
-  // Note: key format accepted as-is (AZ Gateway, sk- format, or other)
 
   try {
     const body = {
