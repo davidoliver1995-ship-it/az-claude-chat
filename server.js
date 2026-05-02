@@ -1,12 +1,10 @@
-import { config } from 'dotenv';
+import 'dotenv/config';
+import express from 'express';
 import { fileURLToPath } from 'url';
-import { dirname, join, resolve } from 'path';
+import { dirname, join } from 'path';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-config({ path: resolve(__dirname, '.env') });
-
-import express from 'express';
 
 const app = express();
 const PORT = process.env.PORT || 3737;
@@ -16,9 +14,9 @@ app.use(express.static(join(__dirname, 'public')));
 
 app.post('/api/chat', async (req, res) => {
   const { messages, system, max_tokens = 4096 } = req.body;
-  const gatewayBase = process.env.ANTHROPIC_BEDROCK_BASE_URL || process.env.AI_GATEWAY_URL || 'https://ai-gateway.astrazeneca.net/bedrock';
+  const gatewayBase = process.env.AI_GATEWAY_URL || 'https://ai-gateway.astrazeneca.net/bedrock';
   const model = process.env.CLAUDE_MODEL || 'us.anthropic.claude-opus-4-5-20251101-v1:0';
-  const apiKey = process.env.AI_GATEWAY_KEY || process.env.AWS_BEARER_TOKEN_BEDROCK || '';
+  const apiKey = process.env.AI_GATEWAY_KEY || '';
 
   if (!apiKey) {
     return res.status(500).json({ error: 'AI_GATEWAY_KEY not set in .env file.' });
@@ -51,4 +49,6 @@ app.listen(PORT, () => {
   console.log(`  │   AZ Claude Chat — Running on port ${PORT}   │`);
   console.log(`  │   Open: http://localhost:${PORT}              │`);
   console.log(`  └────────────────────────────────────────────┘\n`);
+  console.log('  Gateway:', process.env.AI_GATEWAY_URL);
+  console.log('  Key loaded:', process.env.AI_GATEWAY_KEY ? 'YES' : 'NO');
 });
