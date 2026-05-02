@@ -7,7 +7,7 @@ set serverFile to appDir & "/server.js"
 try
   do shell script "test -f " & quoted form of serverFile
 on error
-  display alert "AZ Claude Chat" message "Project not found at ~/az-claude-chat. Please clone the repo first." as critical
+  display alert "AZ Claude Chat" message "Project not found at ~/az-claude-chat. Please run: git clone https://github.com/davidoliver1995-ship-it/az-claude-chat.git ~/az-claude-chat" as critical
   return
 end try
 
@@ -21,10 +21,12 @@ on error
   return
 end try
 
--- Kill existing server
+-- Kill any existing server on port 3737
 try
   do shell script "lsof -ti:3737 | xargs kill -9 2>/dev/null; true"
 end try
+
+delay 1
 
 -- Start server
 do shell script "/usr/local/bin/node " & quoted form of (appDir & "/server.js") & " > /tmp/az-claude-chat.log 2>&1 &"
