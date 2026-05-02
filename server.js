@@ -1,4 +1,11 @@
-import 'dotenv/config';
+import { config } from 'dotenv';
+import { resolve } from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+// Load .env from the same directory as server.js (works regardless of cwd)
+config({ path: resolve(__dirname, '.env') });
 console.log('[DEBUG] AI_GATEWAY_KEY loaded:', process.env.AI_GATEWAY_KEY ? 'YES ('+process.env.AI_GATEWAY_KEY.length+' chars)' : 'NO');
 import express from 'express';
 import { readFileSync } from 'fs';
