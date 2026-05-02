@@ -19,8 +19,9 @@ app.post('/api/chat', async (req, res) => {
   const apiKey = process.env.AI_GATEWAY_KEY || '';
 
   if (!apiKey) {
-    return res.status(500).json({ error: 'AI_GATEWAY_KEY not configured. Check your .env file.' });
+    return res.status(500).json({ error: 'AI_GATEWAY_KEY not set in .env file.' });
   }
+  // Note: key format accepted as-is (AZ Gateway, sk- format, or other)
 
   try {
     const body = {
