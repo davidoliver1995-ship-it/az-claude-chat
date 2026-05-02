@@ -91,6 +91,10 @@
     #gh-new-content { width: 100%; background: #0f172a; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: #e2e8f0; font-size: 12px; padding: 6px 10px; resize: vertical; height: 80px; font-family: monospace; outline: none; margin-bottom: 6px; }
     #gh-new-content:focus { border-color: rgba(131,0,81,0.5); }
   </style>
+  <!-- Office generation libraries -->
+  <script src="https://unpkg.com/docx@8.5.0/build/index.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
 </head>
 <body>
 
@@ -234,6 +238,76 @@ function triggerDownload(filename, text) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+// ── Office document generators ────────────────────────────────────────────────
+
+function getDocFilename(content) {
+  return content.slice(0, 30).replace(/[^a-z0-9]/gi, '_').toLowerCase();
+}
+
+function generateDocx(content, filename) {
+  if (!window.docx) { alert('Word library not loaded. Check your internet connection.'); return; }
+  const { Document, Packer, Paragraph, HeadingLevel } = window.docx;
+  const lines = content.split('\n');
+  const children = lines.map(line => {
+    if (line.startsWith('# '))   return new Paragraph({ text: line.slice(2),  heading: HeadingLevel.HEADING_1 });
+    if (line.startsWith('## '))  return new Paragraph({ text: line.slice(3),  heading: HeadingLevel.HEADING_2 });
+    if (line.startsWith('### ')) return new Paragraph({ text: line.slice(4),  heading: HeadingLevel.HEADING_3 });
+    if (line.startsWith('- ') || line.startsWith('* ')) return new Paragraph({ text: line.slice(2), bullet: { level: 0 } });
+    if (line.trim() === '') return new Paragraph({ text: '' });
+    return new Paragraph({ text: line });
+  });
+  const doc = new Document({ sections: [{ children }] });
+  Packer.toBlob(doc).then(blob => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename + '.docx';
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+}
+
+function generateXlsx(content, filename) {
+  if (!window.XLSX) { alert('Excel library not loaded. Check your internet connection.'); return; }
+  const lines = content.split('\n').filter(l => l.trim().startsWith('|'));
+  const rows = lines
+    .filter(l => !l.match(/^\|[\s\-|]+\|$/))
+    .map(l => l.split('|').slice(1, -1).map(c => c.trim()));
+  if (rows.length === 0) { alert('No table found in response.'); return; }
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+  XLSX.writeFile(wb, filename + '.xlsx');
+}
+
+function generatePptx(content, filename) {
+  if (typeof PptxGenJS === 'undefined') { alert('PowerPoint library not loaded. Check your internet connection.'); return; }
+  const pptx = new PptxGenJS();
+  const sections = content.split(/^## /m).filter(Boolean);
+  if (sections.length === 0) {
+    // Fallback: single slide with all content
+    const slide = pptx.addSlide();
+    slide.addText(filename, { x: 0.5, y: 0.5, w: 9, h: 1.2, fontSize: 28, bold: true, color: '830051' });
+    slide.addText(content.slice(0, 500), { x: 0.5, y: 2, w: 9, h: 4, fontSize: 14, color: '333333' });
+  } else {
+    sections.forEach(section => {
+      const lines = section.split('\n');
+      const title = lines[0].trim();
+      const bullets = lines.slice(1)
+        .filter(l => l.trim() && !l.startsWith('#'))
+        .map(l => l.replace(/^[-*]\s*/, '').trim())
+        .filter(Boolean);
+      const slide = pptx.addSlide();
+      slide.addText(title, { x: 0.5, y: 0.5, w: 9, h: 1.2, fontSize: 28, bold: true, color: '830051' });
+      if (bullets.length > 0) {
+        slide.addText(bullets.map(b => ({ text: b, options: { bullet: true } })),
+          { x: 0.5, y: 2, w: 9, h: 4, fontSize: 18, color: '333333' });
+      }
+    });
+  }
+  pptx.writeFile({ fileName: filename + '.pptx' });
+}
+
 // ── Render assistant message ──────────────────────────────────────────────────
 
 function renderAssistantContent(content) {
@@ -332,8 +406,34 @@ function addMessage(role, content) {
     dlTxtBtn.textContent = '⬇ Download as .txt';
     dlTxtBtn.onclick = () => triggerDownload('response.txt', content);
 
+    const fname = getDocFilename(content);
+
+    const dlWordBtn = document.createElement('button');
+    dlWordBtn.className = 'dl-txt-btn';
+    dlWordBtn.textContent = '⬇ Word';
+    dlWordBtn.title = 'Download as Word (.docx)';
+    dlWordBtn.onclick = () => generateDocx(content, fname);
+    if (!window.docx) dlWordBtn.style.opacity = '0.4';
+
+    const dlXlsxBtn = document.createElement('button');
+    dlXlsxBtn.className = 'dl-txt-btn';
+    dlXlsxBtn.textContent = '⬇ Excel';
+    dlXlsxBtn.title = 'Download as Excel (.xlsx)';
+    dlXlsxBtn.onclick = () => generateXlsx(content, fname);
+    if (!window.XLSX) dlXlsxBtn.style.opacity = '0.4';
+
+    const dlPptxBtn = document.createElement('button');
+    dlPptxBtn.className = 'dl-txt-btn';
+    dlPptxBtn.textContent = '⬇ PowerPoint';
+    dlPptxBtn.title = 'Download as PowerPoint (.pptx)';
+    dlPptxBtn.onclick = () => generatePptx(content, fname);
+    if (typeof PptxGenJS === 'undefined') dlPptxBtn.style.opacity = '0.4';
+
     actRow.appendChild(copyBtn);
     actRow.appendChild(dlTxtBtn);
+    actRow.appendChild(dlWordBtn);
+    actRow.appendChild(dlXlsxBtn);
+    actRow.appendChild(dlPptxBtn);
     div.appendChild(actRow);
   }
 
