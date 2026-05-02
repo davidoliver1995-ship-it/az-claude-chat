@@ -9,7 +9,7 @@ const __dirname = dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3737;
 
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(join(__dirname, 'public')));
 
@@ -40,7 +40,12 @@ app.post('/api/chat', async (req, res) => {
     }
 
     const data = await response.json();
-    return res.json({ content: data.content[0].text, usage: data.usage });
+    // Handle response — may be text or other content types
+    const firstBlock = data.content && data.content[0];
+    const textContent = firstBlock
+      ? (firstBlock.text ?? JSON.stringify(firstBlock))
+      : '';
+    return res.json({ content: textContent, usage: data.usage });
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
