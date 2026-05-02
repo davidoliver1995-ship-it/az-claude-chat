@@ -238,6 +238,25 @@
       <button class="gh-btn" onclick="ghToggleCreate()">📝 Create / Update File</button>
     </div>
     <ul id="gh-file-list" style="display:none"></ul>
+    <!-- Edit Mode Panel -->
+    <div id="gh-edit-mode" style="display:none; margin-top: 12px; background: rgba(131,0,81,0.06); border: 1px solid rgba(131,0,81,0.2); border-radius: 8px; padding: 12px;">
+      <div style="font-size: 11px; color: #830051; font-weight: 700; margin-bottom: 8px;">
+        ✏️ Editing: <span id="gh-edit-filename" style="color: #e2e8f0; font-weight: 400;"></span>
+      </div>
+      <div style="font-size: 11px; color: #64748b; margin-bottom: 4px;">Current content:</div>
+      <textarea id="gh-edit-preview" readonly style="width: 100%; height: 120px; background: #0a0f1a; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; color: #94a3b8; font-size: 11px; font-family: 'Monaco','Menlo',monospace; padding: 8px; resize: vertical; box-sizing: border-box; margin-bottom: 8px;"></textarea>
+      <textarea id="gh-edit-request" placeholder="What changes do you want? e.g. 'Add error handling to the main function'" style="width: 100%; height: 60px; background: #0f172a; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: #e2e8f0; font-size: 12px; font-family: inherit; padding: 8px; resize: vertical; box-sizing: border-box; outline: none; margin-bottom: 8px;"></textarea>
+      <div style="display: flex; gap: 8px;">
+        <button id="gh-ask-claude-btn" onclick="ghAskClaudeToEdit()" class="gh-btn gh-btn-primary">🤖 Ask Claude to Edit</button>
+        <button onclick="ghCancelEdit()" class="gh-btn">✕ Cancel</button>
+      </div>
+      <div id="gh-edit-result" style="display:none; margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.08);">
+        <div style="font-size: 11px; color: #94a3b8; margin-bottom: 4px;">✅ Claude's edit — review and push:</div>
+        <textarea id="gh-edit-new-content" style="width: 100%; height: 120px; background: #0a0f1a; border: 1px solid rgba(131,0,81,0.3); border-radius: 6px; color: #e2e8f0; font-size: 11px; font-family: 'Monaco','Menlo',monospace; padding: 8px; resize: vertical; box-sizing: border-box; margin-bottom: 8px;"></textarea>
+        <input id="gh-edit-commit-msg" class="gh-input" placeholder="Commit message" style="width: 100%; margin-bottom: 8px; box-sizing: border-box;">
+        <button onclick="ghPushEdit()" class="gh-btn gh-btn-primary" style="width: 100%;">🚀 Push to GitHub</button>
+      </div>
+    </div>
     <div id="gh-create-section">
       <h4>📝 Create / Update File</h4>
       <div class="gh-input-row">
@@ -1184,6 +1203,8 @@ async function sendMessage() {
 // ── GitHub Panel ──────────────────────────────────────────────────────────────
 const GITHUB_API = 'https://api.github.com';
 
+let editMode = null; // null | { path, filename, content, sha }
+
 function ghLoad() {
   const token  = localStorage.getItem('gh_token')  || '';
   const repo   = localStorage.getItem('gh_repo')   || '';
@@ -1255,7 +1276,17 @@ async function ghBrowse(path) {
       const li = document.createElement('li');
       li.innerHTML = `<span class="fi">${item.type==='dir'?'📁':'📄'}</span> ${item.name}`;
       if (item.type === 'dir') { li.onclick = () => ghBrowse(item.path); }
-      else { li.onclick = () => ghLoadFile(item.path, item.name); }
+      else {
+        li.onclick = () => ghLoadFile(item.path, item.name);
+        const editBtn = document.createElement('span');
+        editBtn.innerHTML = '✏️';
+        editBtn.title = 'Edit this file';
+        editBtn.style.cssText = 'margin-left: auto; font-size: 10px; color: #64748b; cursor: pointer; padding: 2px 4px; border-radius: 4px; flex-shrink: 0;';
+        editBtn.onmouseenter = () => { editBtn.style.color = '#830051'; };
+        editBtn.onmouseleave = () => { editBtn.style.color = '#64748b'; };
+        editBtn.onclick = (e) => { e.stopPropagation(); ghStartEdit(item.path, item.name); };
+        li.appendChild(editBtn);
+      }
       list.appendChild(li);
     });
   } catch (e) { list.innerHTML = `<li style="color:#f87171">Error: ${e.message}</li>`; }
@@ -1313,6 +1344,88 @@ async function ghPushFile() {
     document.getElementById('gh-new-content').value = '';
     document.getElementById('gh-commit-msg').value = '';
   } catch (e) { ghSetStatus(`✗ Error: ${e.message}`, 'err'); }
+}
+
+async function ghStartEdit(filePath, fileName) {
+  const repo   = document.getElementById('gh-repo').value.trim();
+  const branch = document.getElementById('gh-branch').value.trim() || 'main';
+  ghSetStatus(`Loading ${fileName} for editing…`);
+  try {
+    const r = await fetch(`${GITHUB_API}/repos/${repo}/contents/${filePath}?ref=${encodeURIComponent(branch)}`, { headers: ghHeaders() });
+    if (!r.ok) { const d = await r.json(); ghSetStatus(`✗ ${d.message}`, 'err'); return; }
+    const data = await r.json();
+    const content = atob(data.content.replace(/\n/g, ''));
+    editMode = { path: filePath, filename: fileName, content, sha: data.sha };
+    document.getElementById('gh-edit-filename').textContent = fileName;
+    document.getElementById('gh-edit-preview').value = content;
+    document.getElementById('gh-edit-request').value = '';
+    document.getElementById('gh-edit-result').style.display = 'none';
+    document.getElementById('gh-edit-new-content').value = '';
+    document.getElementById('gh-edit-commit-msg').value = '';
+    document.getElementById('gh-edit-mode').style.display = 'block';
+    document.getElementById('gh-edit-request').focus();
+    ghSetStatus(`✓ Ready to edit: ${fileName}`, 'ok');
+  } catch (e) { ghSetStatus(`✗ Error: ${e.message}`, 'err'); }
+}
+
+async function ghAskClaudeToEdit() {
+  const request = document.getElementById('gh-edit-request').value.trim();
+  if (!request || !editMode) return;
+  const btn = document.getElementById('gh-ask-claude-btn');
+  btn.textContent = '🤖 Asking Claude…';
+  btn.disabled = true;
+  const prompt = `Here is the complete file "${editMode.filename}":\n\n\`\`\`\n${editMode.content}\n\`\`\`\n\nPlease make the following change: ${request}\n\nRespond with ONLY the complete updated file content, no explanation, no markdown code fences - just the raw file content.`;
+  try {
+    const resp = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: [{ role: 'user', content: prompt }] })
+    });
+    const data = await resp.json();
+    const newContent = data.content || data.text || '';
+    document.getElementById('gh-edit-new-content').value = newContent;
+    document.getElementById('gh-edit-commit-msg').value = `${request} (via AZ Claude)`;
+    document.getElementById('gh-edit-result').style.display = 'block';
+    ghSetStatus('✓ Claude edit ready — review and push', 'ok');
+  } catch (e) {
+    ghSetStatus(`✗ Claude error: ${e.message}`, 'err');
+  } finally {
+    btn.textContent = '🤖 Ask Claude to Edit';
+    btn.disabled = false;
+  }
+}
+
+async function ghPushEdit() {
+  if (!editMode) return;
+  const repo      = document.getElementById('gh-repo').value.trim();
+  const branch    = document.getElementById('gh-branch').value.trim() || 'main';
+  const newContent = document.getElementById('gh-edit-new-content').value;
+  const commitMsg  = document.getElementById('gh-edit-commit-msg').value.trim() || `Update ${editMode.filename}`;
+  ghSetStatus('Pushing edit…');
+  try {
+    const body = {
+      message: commitMsg,
+      content: btoa(unescape(encodeURIComponent(newContent))),
+      branch,
+      sha: editMode.sha
+    };
+    const r = await fetch(`${GITHUB_API}/repos/${repo}/contents/${editMode.path}`, {
+      method: 'PUT',
+      headers: { ...ghHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await r.json();
+    if (!r.ok) { ghSetStatus(`✗ ${data.message}`, 'err'); return; }
+    ghSetStatus(`✓ Pushed: ${editMode.filename}`, 'ok');
+    editMode = null;
+    document.getElementById('gh-edit-mode').style.display = 'none';
+  } catch (e) { ghSetStatus(`✗ Error: ${e.message}`, 'err'); }
+}
+
+function ghCancelEdit() {
+  editMode = null;
+  document.getElementById('gh-edit-mode').style.display = 'none';
+  ghSetStatus('Edit cancelled.');
 }
 </script>
 </body>
