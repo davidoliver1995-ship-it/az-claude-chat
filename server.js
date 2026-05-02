@@ -1,4 +1,5 @@
 import 'dotenv/config';
+console.log('[DEBUG] AI_GATEWAY_KEY loaded:', process.env.AI_GATEWAY_KEY ? 'YES ('+process.env.AI_GATEWAY_KEY.length+' chars)' : 'NO');
 import express from 'express';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
