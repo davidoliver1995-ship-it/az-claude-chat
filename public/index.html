@@ -236,6 +236,7 @@
     <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
       <button class="gh-btn" onclick="ghBrowse('')">📁 Browse Files</button>
       <button class="gh-btn" onclick="ghToggleCreate()">📝 Create / Update File</button>
+      <button class="gh-btn" onclick="ghLoadAllFiles()">📥 Load source files into context</button>
     </div>
     <ul id="gh-file-list" style="display:none"></ul>
     <!-- Edit Mode Panel -->
@@ -1070,6 +1071,21 @@ function addMessage(role, content, images) {
     const bubble = document.createElement('div');
     bubble.className = 'bubble';
     bubble.appendChild(renderAssistantContent(content));
+    // Add clickable load buttons for filenames mentioned in backticks that exist in the repo
+    if (window.ghRepoFiles && window.ghRepoFiles.length > 0) {
+      bubble.querySelectorAll('code').forEach(codeEl => {
+        const fname = codeEl.textContent.trim();
+        if (window.ghRepoFiles.includes(fname)) {
+          const btn = document.createElement('button');
+          btn.textContent = '📂';
+          btn.title = `Load ${fname} into context`;
+          btn.style.cssText = 'margin-left:4px;padding:1px 5px;font-size:11px;cursor:pointer;background:rgba(131,0,81,0.15);border:1px solid rgba(131,0,81,0.3);border-radius:4px;color:#cb6bb2;vertical-align:middle;';
+          const capFname = fname;
+          btn.onclick = () => ghLoadFile(capFname.split('/').pop(), capFname);
+          codeEl.parentNode.insertBefore(btn, codeEl.nextSibling);
+        }
+      });
+    }
     div.appendChild(bubble);
 
     const actRow = document.createElement('div');
@@ -1250,7 +1266,118 @@ async function ghConnect() {
     const d = await r.json();
     ghSetStatus(`✓ Connected: ${d.full_name} [${branch}]`, 'ok');
     document.getElementById('gh-connected').style.display = 'block';
+    ghLoadRepoContext();
   } catch (e) { ghSetStatus(`✗ Network error: ${e.message}`, 'err'); }
+}
+
+
+function buildTreeString(paths) {
+  return paths
+    .sort()
+    .filter(p => !p.includes('node_modules') && !p.includes('.git/') && p !== 'package-lock.json' && !p.startsWith('dist/') && !p.startsWith('build/'))
+    .join('\n');
+}
+
+async function ghLoadRepoContext() {
+  const repo   = document.getElementById('gh-repo').value.trim();
+  const branch = document.getElementById('gh-branch').value.trim() || 'main';
+
+  ghSetStatus('Loading repo structure...', '');
+
+  try {
+    const r = await fetch(`${GITHUB_API}/repos/${repo}/git/trees/HEAD?recursive=1`, { headers: ghHeaders() });
+    const data = await r.json();
+
+    if (!data.tree) {
+      ghSetStatus('✗ Could not load repo tree', 'err');
+      return;
+    }
+
+    const files = data.tree.filter(f => f.type === 'blob');
+
+    // Build tree string
+    const tree = buildTreeString(files.map(f => f.path));
+
+    // Store file list for reference
+    window.ghRepoFiles = files.map(f => f.path);
+
+    // Inject into system prompt
+    const systemEl = document.getElementById('system-prompt');
+    const existingSystem = systemEl.value;
+    const repoContext = `You have full access to the GitHub repository: ${repo} (branch: ${branch})\n\nComplete file structure (${files.length} files):\n\`\`\`\n${tree}\n\`\`\`\n\nWhen asked about specific files, the user can load them via the GitHub panel. You know the full structure of this codebase.\n\n`;
+
+    if (!systemEl.style.display || systemEl.style.display === 'none') {
+      systemEl.style.display = 'block';
+      const tog = document.getElementById('system-toggle');
+      if (tog) tog.textContent = '− Hide system prompt';
+    }
+    systemEl.value = repoContext + existingSystem;
+
+    ghSetStatus(`✓ Repo context loaded (${files.length} files)`, 'ok');
+  } catch(e) {
+    ghSetStatus(`✗ Could not load repo tree: ${e.message}`, 'err');
+  }
+}
+
+async function ghLoadAllFiles() {
+  const repo   = document.getElementById('gh-repo').value.trim();
+  const branch = document.getElementById('gh-branch').value.trim() || 'main';
+  const SOURCE_EXTS = ['.js','.jsx','.ts','.tsx','.py','.sql','.md','.html','.css','.yaml','.yml','.sh','.json'];
+
+  const filesToLoad = (window.ghRepoFiles || []).filter(path => {
+    const dotIdx = path.lastIndexOf('.');
+    const ext = dotIdx >= 0 ? path.slice(dotIdx) : '';
+    return SOURCE_EXTS.includes(ext) &&
+           !path.includes('node_modules') &&
+           !path.includes('dist/') &&
+           !path.includes('build/') &&
+           !path.includes('package-lock');
+  }).slice(0, 30);
+
+  if (filesToLoad.length === 0) {
+    ghSetStatus('⚠ No source files found. Connect to a repo first.', 'err');
+    return;
+  }
+
+  ghSetStatus(`Loading ${filesToLoad.length} source files...`, '');
+
+  let combined = `Here are the source files from ${repo}:\n\n`;
+  let loaded = 0;
+
+  for (const filePath of filesToLoad) {
+    try {
+      const r = await fetch(`${GITHUB_API}/repos/${repo}/contents/${filePath}?ref=${encodeURIComponent(branch)}`, { headers: ghHeaders() });
+      if (!r.ok) continue;
+      const data = await r.json();
+      if (data.size > 51200) continue; // skip > 50KB
+      const fileContent = atob(data.content.replace(/\n/g, ''));
+      const ext = filePath.split('.').pop();
+      combined += `### ${filePath}\n\`\`\`${ext}\n${fileContent}\n\`\`\`\n\n`;
+      loaded++;
+    } catch(e) { /* skip */ }
+  }
+
+  // Add as a message in conversation
+  messages.push({ role: 'user', content: combined + '\nI have loaded these files for context. Please acknowledge.' });
+  addMessage('user', `📥 Loaded ${loaded} source files into context`);
+
+  // Get Claude acknowledgment
+  showThinking();
+  try {
+    const resp = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages }),
+    });
+    const d = await resp.json();
+    removeThinking();
+    messages.push({ role: 'assistant', content: d.content });
+    addMessage('assistant', d.content);
+  } catch(e) {
+    removeThinking();
+  }
+
+  ghSetStatus(`✓ ${loaded} files loaded into context`, 'ok');
 }
 
 async function ghBrowse(path) {
