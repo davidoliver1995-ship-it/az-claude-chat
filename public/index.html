@@ -1334,7 +1334,7 @@ async function ghLoadAllFiles() {
            !path.includes('dist/') &&
            !path.includes('build/') &&
            !path.includes('package-lock');
-  }).slice(0, 60); // increased from 30
+  }).slice(0, 100); // load all files
 
   if (filesToLoad.length === 0) {
     ghSetStatus('⚠ No source files found. Connect to a repo first.', 'err');
