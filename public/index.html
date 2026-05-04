@@ -1217,7 +1217,7 @@ async function sendMessage() {
 }
 
 // ── GitHub Panel ──────────────────────────────────────────────────────────────
-const GITHUB_API = 'https://api.github.com';
+const GITHUB_API = '/api/github'; // proxied through local server to avoid CORS
 
 let editMode = null; // null | { path, filename, content, sha }
 
