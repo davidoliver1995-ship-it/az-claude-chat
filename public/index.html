@@ -1188,7 +1188,7 @@ async function sendMessage() {
     const resp = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages, system: system || undefined, max_tokens: 4096 }),
+      body: JSON.stringify({ messages, system: system || undefined, max_tokens: 8192 }),
     });
     const data = await resp.json();
     removeThinking();
@@ -1508,7 +1508,7 @@ async function ghAskClaudeToEdit() {
     const resp = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: [{ role: 'user', content: prompt }] })
+      body: JSON.stringify({ messages: [{ role: 'user', content: prompt }], max_tokens: 8192 })
     });
     const data = await resp.json();
     const newContent = data.content || data.text || '';

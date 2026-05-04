@@ -15,7 +15,7 @@ app.use(express.static(join(__dirname, 'public')));
 
 app.post('/api/chat', async (req, res) => {
   if (!req.body) return res.status(400).json({ error: 'Request body missing' });
-  const { messages, system, max_tokens = 4096 } = req.body;
+  const { messages, system, max_tokens = 8192 } = req.body;
   const gatewayBase = process.env.AI_GATEWAY_URL || 'https://ai-gateway.astrazeneca.net/bedrock';
   const model = process.env.CLAUDE_MODEL || 'us.anthropic.claude-opus-4-5-20251101-v1:0';
   const apiKey = process.env.AI_GATEWAY_KEY || '';
