@@ -1334,7 +1334,7 @@ async function ghLoadAllFiles() {
            !path.includes('dist/') &&
            !path.includes('build/') &&
            !path.includes('package-lock');
-  }).slice(0, 30);
+  }).slice(0, 60); // increased from 30
 
   if (filesToLoad.length === 0) {
     ghSetStatus('⚠ No source files found. Connect to a repo first.', 'err');
@@ -1351,7 +1351,7 @@ async function ghLoadAllFiles() {
       const r = await fetch(`${GITHUB_API}/repos/${repo}/contents/${filePath}?ref=${encodeURIComponent(branch)}`, { headers: ghHeaders() });
       if (!r.ok) continue;
       const data = await r.json();
-      if (data.size > 51200) continue; // skip > 50KB
+      if (data.size > 204800) continue; // skip > 200KB
       const fileContent = atob(data.content.replace(/\n/g, ''));
       const ext = filePath.split('.').pop();
       combined += `### ${filePath}\n\`\`\`${ext}\n${fileContent}\n\`\`\`\n\n`;
