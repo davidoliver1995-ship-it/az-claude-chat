@@ -54,7 +54,7 @@ app.post('/api/chat', async (req, res) => {
 // GitHub API proxy - avoids CORS issues from browser
 app.all('/api/github/*', async (req, res) => {
   const token = req.headers['x-github-token'] || '';
-  const githubPath = req.params[0];
+  const githubPath = req.path.replace('/api/github/', '');
   const query = Object.keys(req.query).length ? '?' + new URLSearchParams(req.query).toString() : '';
   const url = `https://api.github.com/${githubPath}${query}`;
 
