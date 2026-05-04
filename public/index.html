@@ -1266,7 +1266,9 @@ async function ghConnect() {
     const d = await r.json();
     ghSetStatus(`✓ Connected: ${d.full_name} [${branch}]`, 'ok');
     document.getElementById('gh-connected').style.display = 'block';
-    ghLoadRepoContext();
+    await ghLoadRepoContext();
+    ghSetStatus('Loading source files into context...', '');
+    await ghLoadAllFiles();
   } catch (e) { ghSetStatus(`✗ Network error: ${e.message}`, 'err'); }
 }
 
