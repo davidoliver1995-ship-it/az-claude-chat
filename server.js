@@ -51,6 +51,35 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
+// GitHub API proxy - avoids CORS issues from browser
+app.all('/api/github/*', async (req, res) => {
+  const token = req.headers['x-github-token'] || '';
+  const githubPath = req.params[0];
+  const query = Object.keys(req.query).length ? '?' + new URLSearchParams(req.query).toString() : '';
+  const url = `https://api.github.com/${githubPath}${query}`;
+
+  try {
+    const opts = {
+      method: req.method,
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+        'User-Agent': 'AZ-Claude-Chat/1.0',
+      },
+    };
+    if (req.method !== 'GET' && req.body && Object.keys(req.body).length) {
+      opts.headers['Content-Type'] = 'application/json';
+      opts.body = JSON.stringify(req.body);
+    }
+    const r = await fetch(url, opts);
+    const data = await r.json();
+    res.status(r.status).json(data);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`\n  ┌────────────────────────────────────────────┐`);
   console.log(`  │   AZ Claude Chat — Running on port ${PORT}   │`);
