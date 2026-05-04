@@ -55,6 +55,7 @@ app.post('/api/chat', async (req, res) => {
 app.all('/api/github/*', async (req, res) => {
   const token = req.headers['x-github-token'] || '';
   const githubPath = req.path.replace('/api/github/', '');
+  console.log('[GitHub Proxy]', req.method, githubPath, '| token length:', token.length, '| starts:', token.slice(0,8));
   const query = Object.keys(req.query).length ? '?' + new URLSearchParams(req.query).toString() : '';
   const url = `https://api.github.com/${githubPath}${query}`;
 
