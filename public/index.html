@@ -444,14 +444,25 @@ async function processFile(file) {
           injectTextIntoInput(name, `[${name} — could not parse: ${data.error}]`);
         } else {
           const label = ext.toUpperCase();
-          const truncNote = data.truncated ? '\n[Note: document truncated to 50,000 characters]' : '';
-          injectTextIntoInput(name, `[${label}: ${name} — ${data.charCount.toLocaleString()} chars extracted]\n\n${data.text}${truncNote}`);
+          const truncNote = data.truncated ? '\n\n[Note: document was truncated to 50,000 characters]' : '';
+          const fullContent = `The following is the complete content of the ${label} file "${name}" (${data.charCount.toLocaleString()} characters):\n\n${data.text}${truncNote}`;
+          // Inject directly into message input (not via injectTextIntoInput to avoid code fencing)
+          const msgInput = document.getElementById('message-input');
+          const existing = msgInput.value.trim();
+          msgInput.value = (existing ? existing + '\n\n' : '') + fullContent + '\n\nPlease ';
+          autoResize(msgInput);
+          msgInput.focus();
+          msgInput.setSelectionRange(msgInput.value.length, msgInput.value.length);
+          // Skip the normal injectTextIntoInput call
+          attachments.push({ name, isImage: false, mimeType: null, base64: null, textContent: null });
+          renderAttachmentPills();
+          return;
         }
       } catch(err) {
         injectTextIntoInput(name, `[${name} — parse error: ${err.message}]`);
+        attachments.push({ name, isImage: false, mimeType: null, base64: null, textContent: null });
+        renderAttachmentPills();
       }
-      attachments.push({ name, isImage: false, mimeType: null, base64: null, textContent: null });
-      renderAttachmentPills();
     };
     reader.readAsDataURL(file);
     return;
