@@ -825,50 +825,98 @@ function artifactExport(format) {
 
 function exportDocx(content, fname, docTitle) {
   if (!window.docx) { alert('Word library not loaded — use Text export instead.'); return; }
-  const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } = window.docx;
+  const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, BorderStyle } = window.docx;
 
   const children = [];
+  const now = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+  // Professional title block
+  if (docTitle) {
+    children.push(new Paragraph({
+      children: [new TextRun({ text: docTitle.replace(/_/g,' '), bold: true, size: 36, color: '1e293b' })],
+      alignment: AlignmentType.LEFT,
+      spacing: { before: 0, after: 120 },
+      border: { bottom: { color: '830051', space: 1, style: BorderStyle.SINGLE, size: 8 } },
+    }));
+    children.push(new Paragraph({
+      children: [new TextRun({ text: `Generated ${now} · AstraZeneca CGT Logistics`, size: 18, color: '64748b', italics: true })],
+      spacing: { before: 60, after: 400 },
+    }));
+  }
+
   const lines = content.split('\n');
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
     if (line.startsWith('### ')) {
-      children.push(new Paragraph({ text: line.slice(4), heading: HeadingLevel.HEADING_3, spacing: { before: 200, after: 100 } }));
+      children.push(new Paragraph({ 
+        children: [new TextRun({ text: line.slice(4), bold: true, size: 24, color: '374151' })],
+        spacing: { before: 280, after: 100 },
+      }));
     } else if (line.startsWith('## ')) {
-      children.push(new Paragraph({ text: line.slice(3), heading: HeadingLevel.HEADING_2, spacing: { before: 300, after: 120 } }));
+      children.push(new Paragraph({ 
+        children: [new TextRun({ text: line.slice(3), bold: true, size: 28, color: '1e293b' })],
+        spacing: { before: 360, after: 120 },
+        border: { bottom: { color: 'e2e8f0', space: 1, style: BorderStyle.SINGLE, size: 4 } },
+      }));
     } else if (line.startsWith('# ')) {
-      children.push(new Paragraph({ text: line.slice(2), heading: HeadingLevel.HEADING_1, spacing: { before: 400, after: 200 } }));
+      children.push(new Paragraph({ 
+        children: [new TextRun({ text: line.slice(2), bold: true, size: 34, color: '830051' })],
+        spacing: { before: 480, after: 200 },
+      }));
     } else if (/^[\-\*\+] /.test(line)) {
       const text = line.replace(/^[\-\*\+] /, '');
       children.push(new Paragraph({
         children: parseBoldRuns(text, TextRun),
         bullet: { level: 0 },
-        spacing: { before: 60, after: 60 },
+        spacing: { before: 80, after: 80 },
       }));
     } else if (/^\d+\. /.test(line)) {
       const text = line.replace(/^\d+\. /, '');
       children.push(new Paragraph({
-        children: parseBoldRuns(text, TextRun),
-        numbering: { reference: 'default-numbering', level: 0 },
-        spacing: { before: 60, after: 60 },
+        children: [new TextRun({ text: `${line.match(/^\d+/)[0]}. `, bold: true }), ...parseBoldRuns(text, TextRun)],
+        spacing: { before: 80, after: 80 },
+        indent: { left: 360 },
+      }));
+    } else if (line.startsWith('> ')) {
+      children.push(new Paragraph({
+        children: [new TextRun({ text: line.slice(2), italics: true, color: '475569', size: 22 })],
+        spacing: { before: 120, after: 120 },
+        indent: { left: 720 },
+        border: { left: { color: '94a3b8', space: 9, style: BorderStyle.SINGLE, size: 12 } },
       }));
     } else if (line.trim() === '') {
-      children.push(new Paragraph({ text: '', spacing: { before: 100, after: 100 } }));
+      children.push(new Paragraph({ text: '', spacing: { before: 80, after: 80 } }));
     } else {
       children.push(new Paragraph({
         children: parseBoldRuns(line, TextRun),
-        spacing: { before: 80, after: 80 },
+        spacing: { before: 100, after: 100 },
       }));
     }
   }
 
+  // Professional footer
+  children.push(new Paragraph({ text: '', spacing: { before: 480 } }));
+  children.push(new Paragraph({
+    children: [new TextRun({ text: 'CONFIDENTIAL · AstraZeneca Cell Therapy Logistics', size: 16, color: '94a3b8', italics: true })],
+    alignment: AlignmentType.CENTER,
+    border: { top: { color: 'e2e8f0', space: 1, style: BorderStyle.SINGLE, size: 4 } },
+    spacing: { before: 120 },
+  }));
+
   const doc = new Document({
+    styles: {
+      default: {
+        document: {
+          run: { font: 'Calibri', size: 24, color: '1e293b' },
+          paragraph: { spacing: { line: 320 } },
+        },
+      },
+    },
     sections: [{
       properties: {
-        page: {
-          margin: { top: 1440, bottom: 1440, left: 1440, right: 1440 }, // 1 inch = 1440 twips
-        },
+        page: { margin: { top: 1440, bottom: 1440, left: 1440, right: 1440 } },
       },
       children,
     }],
@@ -1126,7 +1174,19 @@ function addMessage(role, content, images) {
     dlTxtBtn.textContent = '⬇ .txt';
     dlTxtBtn.onclick = () => triggerDownload('response.txt', content);
 
+    // Word download button — always visible, professional formatting
+    const dlWordBtn = document.createElement('button');
+    dlWordBtn.className = 'dl-txt-btn';
+    dlWordBtn.style.cssText = 'background:rgba(30,64,175,0.2);border-color:rgba(59,130,246,0.4);color:#93c5fd;';
+    dlWordBtn.textContent = '⬇ Word';
+    const wordContent = content;
+    dlWordBtn.onclick = () => {
+      const fname = wordContent.slice(0,40).replace(/[^a-z0-9]/gi,'_').toLowerCase() || 'document';
+      exportDocx(wordContent, fname, fname.replace(/_/g,' '));
+    };
+
     actRow.appendChild(copyBtn);
+    actRow.appendChild(dlWordBtn);
     actRow.appendChild(dlTxtBtn);
 
     // Show artifact panel button if applicable
