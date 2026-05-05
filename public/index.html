@@ -1179,11 +1179,12 @@ function addMessage(role, content, images) {
     dlWordBtn.className = 'dl-txt-btn';
     dlWordBtn.style.cssText = 'background:rgba(30,64,175,0.2);border-color:rgba(59,130,246,0.4);color:#93c5fd;';
     dlWordBtn.textContent = '⬇ Word';
-    const wordContent = content;
-    dlWordBtn.onclick = () => {
-      const fname = wordContent.slice(0,40).replace(/[^a-z0-9]/gi,'_').toLowerCase() || 'document';
-      exportDocx(wordContent, fname, fname.replace(/_/g,' '));
-    };
+    (function(capturedContent) {
+      dlWordBtn.addEventListener('click', function() {
+        const fname = capturedContent.slice(0,40).replace(/[^a-z0-9]/gi,'_').toLowerCase() || 'document';
+        exportDocx(capturedContent, fname, fname.replace(/_/g,' '));
+      });
+    })(content);
 
     actRow.appendChild(copyBtn);
     actRow.appendChild(dlWordBtn);
