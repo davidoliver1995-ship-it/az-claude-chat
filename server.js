@@ -89,3 +89,58 @@ app.listen(PORT, () => {
   console.log('  Gateway:', process.env.AI_GATEWAY_URL);
   console.log('  Key loaded:', process.env.AI_GATEWAY_KEY ? 'YES' : 'NO');
 });
+
+
+// Document parsing endpoint
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+
+app.post('/api/parse-document', async (req, res) => {
+  const { filename, content, mimeType } = req.body;
+  // content is base64-encoded file data
+  if (!content) return res.status(400).json({ error: 'No content provided' });
+
+  const buffer = Buffer.from(content, 'base64');
+  let text = '';
+
+  try {
+    const ext = filename.split('.').pop().toLowerCase();
+
+    if (ext === 'pdf') {
+      const pdfParse = require('pdf-parse');
+      const data = await pdfParse(buffer);
+      text = data.text;
+
+    } else if (ext === 'docx') {
+      const mammoth = require('mammoth');
+      const result = await mammoth.extractRawText({ buffer });
+      text = result.value;
+
+    } else if (ext === 'pptx') {
+      // PPTX is a zip — extract slide XML text
+      const { Readable } = await import('stream');
+      const unzipper = require('unzipper');
+      const directory = await unzipper.Open.buffer(buffer);
+      const slideFiles = directory.files.filter(f => f.path.match(/^ppt\/slides\/slide\d+\.xml$/));
+      slideFiles.sort((a, b) => {
+        const numA = parseInt(a.path.match(/\d+/)?.[0] || 0);
+        const numB = parseInt(b.path.match(/\d+/)?.[0] || 0);
+        return numA - numB;
+      });
+      const slideTexts = [];
+      for (const sf of slideFiles) {
+        const xml = (await sf.buffer()).toString('utf8');
+        const slideText = xml.replace(/<a:t>(.*?)<\/a:t>/g, '$1 ').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+        if (slideText) slideTexts.push(slideText);
+      }
+      text = slideTexts.map((t, i) => `[Slide ${i+1}]\n${t}`).join('\n\n');
+
+    } else {
+      return res.status(400).json({ error: `Unsupported format: .${ext}` });
+    }
+
+    return res.json({ text: text.slice(0, 50000), truncated: text.length > 50000, charCount: text.length });
+  } catch (e) {
+    return res.status(500).json({ error: `Parse failed: ${e.message}` });
+  }
+});
