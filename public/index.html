@@ -428,22 +428,32 @@ async function processFile(file) {
     return;
   }
 
-  // ── PDF ─────────────────────────────────────────────────────────────────────
-  if (ext === 'pdf') {
-    const sizeKb = (file.size / 1024).toFixed(1);
-    injectTextIntoInput(name, `[PDF file: ${name} — ${sizeKb} KB. Note: PDF content cannot be extracted client-side. Please describe what you need from this document or paste the relevant text directly.]`);
-    attachments.push({ name, isImage: false, mimeType: null, base64: null, textContent: null });
-    renderAttachmentPills();
-    return;
-  }
-
-  // ── DOCX ────────────────────────────────────────────────────────────────────
-  if (ext === 'docx') {
-    // Try to read raw text (won't be fully parsed but may have some readable content)
-    const sizeKb = (file.size / 1024).toFixed(1);
-    injectTextIntoInput(name, `[Word document: ${name} — ${sizeKb} KB. DOCX parsing is not available in the browser. Please paste the relevant text or describe what you need.]`);
-    attachments.push({ name, isImage: false, mimeType: null, base64: null, textContent: null });
-    renderAttachmentPills();
+  // ── PDF / DOCX / PPTX — server-side parsing ─────────────────────────────────
+  if (['pdf', 'docx', 'pptx'].includes(ext)) {
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const base64 = e.target.result.split(',')[1];
+      try {
+        const resp = await fetch('/api/parse-document', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filename: name, content: base64, mimeType: file.type }),
+        });
+        const data = await resp.json();
+        if (data.error) {
+          injectTextIntoInput(name, `[${name} — could not parse: ${data.error}]`);
+        } else {
+          const label = ext.toUpperCase();
+          const truncNote = data.truncated ? '\n[Note: document truncated to 50,000 characters]' : '';
+          injectTextIntoInput(name, `[${label}: ${name} — ${data.charCount.toLocaleString()} chars extracted]\n\n${data.text}${truncNote}`);
+        }
+      } catch(err) {
+        injectTextIntoInput(name, `[${name} — parse error: ${err.message}]`);
+      }
+      attachments.push({ name, isImage: false, mimeType: null, base64: null, textContent: null });
+      renderAttachmentPills();
+    };
+    reader.readAsDataURL(file);
     return;
   }
 
