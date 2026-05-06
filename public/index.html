@@ -723,7 +723,7 @@ function showArtifact(type, content, title) {
   // Show/dim export buttons based on type
   document.getElementById('btn-export-word').disabled   = (type === 'table');
   document.getElementById('btn-export-excel').disabled  = (type !== 'table');
-  document.getElementById('btn-export-pptx').disabled   = (type !== 'presentation');
+  document.getElementById('btn-export-pptx').disabled   = false; // Always enabled - PowerPoint works with any content
 
   renderArtifactPreview(type, content);
 
