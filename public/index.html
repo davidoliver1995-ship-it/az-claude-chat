@@ -862,6 +862,43 @@ function renderArtifactPreview(type, content) {
 }
 
 // ── Slide parser & renderer ───────────────────────────────────────────────────
+function parseChartBlock(block) {
+  // Parse chart code block into structured data
+  const lines = block.trim().split('\n');
+  const chart = { type: 'bar', title: '', labels: [], data: [], colors: [] };
+
+  lines.forEach(line => {
+    const [key, ...rest] = line.split(':');
+    const value = rest.join(':').trim();
+    if (!value) return;
+
+    switch (key.trim().toLowerCase()) {
+      case 'type':
+        chart.type = value.toLowerCase();
+        break;
+      case 'title':
+        chart.title = value;
+        break;
+      case 'labels':
+        chart.labels = value.split(',').map(s => s.trim());
+        break;
+      case 'data':
+        chart.data = value.split(',').map(s => parseFloat(s.trim()) || 0);
+        break;
+      case 'colors':
+        chart.colors = value.split(',').map(s => s.trim());
+        break;
+    }
+  });
+
+  // Default colors if not specified
+  if (chart.colors.length === 0) {
+    chart.colors = ['#830051', '#c026d3', '#e879f9', '#f0abfc', '#fae8ff', '#4f46e5', '#818cf8'];
+  }
+
+  return chart;
+}
+
 function parseSlides(content) {
   const slides = [];
 
@@ -877,9 +914,26 @@ function parseSlides(content) {
     const slideTitle = lines[0].replace(/^## /, '').trim();
     if (!slideTitle) return;
 
+    // Check for chart block in this section
+    const chartMatch = section.match(/```chart\n([\s\S]*?)```/);
+    if (chartMatch) {
+      const chart = parseChartBlock(chartMatch[1]);
+      slides.push({ title: slideTitle, chart, bullets: [] });
+      return;
+    }
+
     // Parse bullets - be more flexible with formats
     const bullets = [];
+    let inCodeBlock = false;
+
     lines.slice(1).forEach(line => {
+      // Skip code blocks
+      if (line.trim().startsWith('```')) {
+        inCodeBlock = !inCodeBlock;
+        return;
+      }
+      if (inCodeBlock) return;
+
       const trimmed = line.trim();
       if (!trimmed || trimmed.match(/^[-=]{3,}$/)) return;
       // Skip # headings but not ### subheaders within content
@@ -904,11 +958,21 @@ function parseSlides(content) {
     }
   });
 
-  // Consolidate thin slides (fewer than 3 bullets) with next slide
+  // Consolidate thin slides (fewer than 3 bullets, no chart) with next slide
   const consolidated = [];
   let pending = null;
 
   slides.forEach((slide, idx) => {
+    // Don't consolidate chart slides
+    if (slide.chart) {
+      if (pending) {
+        consolidated.push(pending);
+        pending = null;
+      }
+      consolidated.push(slide);
+      return;
+    }
+
     if (pending) {
       // Merge: add pending title as a "header" bullet, then its bullets, then current
       const merged = {
@@ -937,7 +1001,120 @@ function parseSlides(content) {
   return { title: presentationTitle, slides: consolidated };
 }
 
+function renderChartSVG(chart, width = 280, height = 180) {
+  const { type, title, labels, data, colors } = chart;
+  const maxVal = Math.max(...data, 1);
+
+  if (type === 'pie' || type === 'doughnut') {
+    const total = data.reduce((a, b) => a + b, 0) || 1;
+    const cx = width / 2, cy = height / 2 + 10, r = 70;
+    const innerR = type === 'doughnut' ? 35 : 0;
+    let startAngle = -90;
+    let paths = '';
+    let legendY = 10;
+
+    data.forEach((val, i) => {
+      const angle = (val / total) * 360;
+      const endAngle = startAngle + angle;
+      const largeArc = angle > 180 ? 1 : 0;
+      const x1 = cx + r * Math.cos(startAngle * Math.PI / 180);
+      const y1 = cy + r * Math.sin(startAngle * Math.PI / 180);
+      const x2 = cx + r * Math.cos(endAngle * Math.PI / 180);
+      const y2 = cy + r * Math.sin(endAngle * Math.PI / 180);
+      const ix1 = cx + innerR * Math.cos(startAngle * Math.PI / 180);
+      const iy1 = cy + innerR * Math.sin(startAngle * Math.PI / 180);
+      const ix2 = cx + innerR * Math.cos(endAngle * Math.PI / 180);
+      const iy2 = cy + innerR * Math.sin(endAngle * Math.PI / 180);
+
+      if (innerR > 0) {
+        paths += `<path d="M${x1},${y1} A${r},${r} 0 ${largeArc},1 ${x2},${y2} L${ix2},${iy2} A${innerR},${innerR} 0 ${largeArc},0 ${ix1},${iy1} Z" fill="${colors[i % colors.length]}"/>`;
+      } else {
+        paths += `<path d="M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${largeArc},1 ${x2},${y2} Z" fill="${colors[i % colors.length]}"/>`;
+      }
+      startAngle = endAngle;
+    });
+
+    // Legend
+    let legend = '';
+    labels.forEach((label, i) => {
+      const pct = ((data[i] / total) * 100).toFixed(0);
+      legend += `<rect x="${width - 90}" y="${legendY}" width="10" height="10" fill="${colors[i % colors.length]}"/>`;
+      legend += `<text x="${width - 75}" y="${legendY + 9}" font-size="9" fill="#334155">${label} (${pct}%)</text>`;
+      legendY += 14;
+    });
+
+    return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${paths}${legend}</svg>`;
+  }
+
+  // Bar or Line chart
+  const barWidth = Math.min(40, (width - 60) / data.length - 8);
+  const chartHeight = height - 50;
+  const chartTop = 25;
+  let bars = '';
+
+  if (type === 'line') {
+    let points = '';
+    let dots = '';
+    data.forEach((val, i) => {
+      const x = 50 + i * ((width - 70) / (data.length - 1 || 1));
+      const y = chartTop + chartHeight - (val / maxVal) * chartHeight;
+      points += `${i === 0 ? 'M' : 'L'}${x},${y} `;
+      dots += `<circle cx="${x}" cy="${y}" r="4" fill="${colors[0]}"/>`;
+    });
+    bars = `<path d="${points}" fill="none" stroke="${colors[0]}" stroke-width="2"/>${dots}`;
+  } else {
+    data.forEach((val, i) => {
+      const barH = (val / maxVal) * chartHeight;
+      const x = 50 + i * (barWidth + 8);
+      const y = chartTop + chartHeight - barH;
+      bars += `<rect x="${x}" y="${y}" width="${barWidth}" height="${barH}" fill="${colors[i % colors.length]}" rx="2"/>`;
+      bars += `<text x="${x + barWidth/2}" y="${y - 4}" font-size="9" fill="#334155" text-anchor="middle">${val}</text>`;
+    });
+  }
+
+  // X-axis labels
+  let xLabels = '';
+  labels.forEach((label, i) => {
+    const x = type === 'line'
+      ? 50 + i * ((width - 70) / (data.length - 1 || 1))
+      : 50 + i * (barWidth + 8) + barWidth / 2;
+    xLabels += `<text x="${x}" y="${height - 5}" font-size="9" fill="#64748b" text-anchor="middle">${label.length > 8 ? label.slice(0,7) + '…' : label}</text>`;
+  });
+
+  // Y-axis
+  const yAxis = `<line x1="45" y1="${chartTop}" x2="45" y2="${chartTop + chartHeight}" stroke="#e2e8f0" stroke-width="1"/>`;
+  const yLabel = `<text x="10" y="${chartTop + chartHeight/2}" font-size="9" fill="#64748b" transform="rotate(-90, 10, ${chartTop + chartHeight/2})">Value</text>`;
+
+  return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${yAxis}${bars}${xLabels}</svg>`;
+}
+
 function renderSlide(slide, index, total) {
+  // Chart slide
+  if (slide.chart) {
+    const chartSvg = renderChartSVG(slide.chart, 280, 180);
+    return `
+      <div style="
+        background: #ffffff;
+        height: 100%;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        font-family: 'Calibri', 'Segoe UI', -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif;
+        position: relative;
+        box-sizing: border-box;
+      ">
+        <div style="height: 6px; background: #830051; flex-shrink: 0;"></div>
+        <div style="padding: 24px 28px 40px; flex: 1; display: flex; flex-direction: column; align-items: center;">
+          <div style="font-size: 22px; font-weight: 700; color: #1e293b; margin-bottom: 8px; align-self: flex-start;">${slide.title}</div>
+          <div style="font-size: 14px; color: #64748b; margin-bottom: 16px; align-self: flex-start;">${slide.chart.title}</div>
+          <div style="flex: 1; display: flex; align-items: center; justify-content: center;">
+            ${chartSvg}
+          </div>
+        </div>
+        <div style="position: absolute; bottom: 10px; right: 16px; font-size: 10px; color: #64748b;">${index + 1} / ${total}</div>
+      </div>`;
+  }
+
   const bulletHtml = slide.bullets.map(b => {
     const text = String(b || '');
     // Check for subheader marker
@@ -1280,6 +1457,78 @@ function exportPptx(content, fname, docTitle) {
     });
   });
 
+  // Helper: add a chart slide
+  const addChartSlide = (title, chart, slideIndex) => {
+    allSlideBuilders.push((pptx, total) => {
+      const slide = pptx.addSlide();
+      slide.background = { color: BG_WHITE };
+
+      // Purple accent bar at top
+      slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: '100%', h: 0.1, fill: { color: AZ_PURPLE } });
+
+      // Slide title
+      slide.addText(title, {
+        x: 0.5, y: 0.4, w: 12.3, h: 0.6,
+        fontSize: 24, bold: true, color: TEXT_DARK, fontFace: FONT, valign: 'middle',
+      });
+
+      // Chart subtitle
+      if (chart.title) {
+        slide.addText(chart.title, {
+          x: 0.5, y: 1.0, w: 12.3, h: 0.4,
+          fontSize: 14, color: TEXT_MUTED, fontFace: FONT,
+        });
+      }
+
+      // Map chart type to PptxGenJS type
+      const pptxChartType = {
+        'bar': pptx.ChartType.bar,
+        'line': pptx.ChartType.line,
+        'pie': pptx.ChartType.pie,
+        'doughnut': pptx.ChartType.doughnut,
+      }[chart.type] || pptx.ChartType.bar;
+
+      // Prepare chart data
+      const chartData = [{
+        name: chart.title || 'Data',
+        labels: chart.labels,
+        values: chart.data,
+      }];
+
+      // Chart colors (strip # for pptx)
+      const chartColors = chart.colors.map(c => c.replace('#', ''));
+
+      // Add chart
+      const isPie = chart.type === 'pie' || chart.type === 'doughnut';
+      slide.addChart(pptxChartType, chartData, {
+        x: isPie ? 2 : 0.8,
+        y: 1.5,
+        w: isPie ? 9 : 11.5,
+        h: 5,
+        showLegend: true,
+        legendPos: isPie ? 'r' : 'b',
+        showValue: !isPie,
+        dataLabelPosition: 'outEnd',
+        dataLabelFontSize: 10,
+        dataLabelColor: TEXT_BODY,
+        chartColors: chartColors,
+        barGapWidthPct: 50,
+        showCatAxisTitle: false,
+        showValAxisTitle: false,
+        catAxisLabelColor: TEXT_MUTED,
+        valAxisLabelColor: TEXT_MUTED,
+        catAxisLabelFontSize: 10,
+        valAxisLabelFontSize: 10,
+      });
+
+      // Slide number
+      slide.addText((slideIndex + 1) + ' / ' + total, {
+        x: 11.5, y: 6.8, w: 1, h: 0.3,
+        fontSize: 10, color: TEXT_MUTED, align: 'right', fontFace: FONT,
+      });
+    });
+  };
+
   // Helper: add a content slide - matches preview exactly
   const addContentSlide = (title, bullets, slideIndex) => {
     allSlideBuilders.push((pptx, total) => {
@@ -1353,7 +1602,11 @@ function exportPptx(content, fname, docTitle) {
   // Create slides from parsed data
   if (parsedSlides.length > 0) {
     parsedSlides.forEach(slide => {
-      addContentSlide(slide.title, slide.bullets, allSlideBuilders.length);
+      if (slide.chart) {
+        addChartSlide(slide.title, slide.chart, allSlideBuilders.length);
+      } else {
+        addContentSlide(slide.title, slide.bullets, allSlideBuilders.length);
+      }
     });
   } else {
     // Fallback: create a single slide with content
@@ -1601,18 +1854,44 @@ async function sendMessage() {
 - Key point one (be specific and data-driven)
 - Key point two
 - Key point three
-- Supporting detail or statistic
 
 ## [Slide 2 Title]
 - Key point one
 ...
 
+FOR DATA/CHARTS: When you have numerical data to visualize, use this exact format:
+
+\`\`\`chart
+type: bar|line|pie|doughnut
+title: Chart Title
+labels: Label1, Label2, Label3
+data: 10, 25, 15
+colors: #830051, #c026d3, #e879f9
+\`\`\`
+
+Example bar chart:
+\`\`\`chart
+type: bar
+title: Q1 Sales by Region
+labels: North, South, East, West
+data: 45, 32, 28, 51
+\`\`\`
+
+Example pie chart:
+\`\`\`chart
+type: pie
+title: Market Share
+labels: Product A, Product B, Product C
+data: 45, 35, 20
+\`\`\`
+
 Rules:
 - Each ## heading = one slide
-- 4-7 bullet points per slide
+- 4-7 bullet points per slide OR a chart
 - Be specific, professional, and insightful — not generic
-- Use data, percentages, and concrete facts where available
-- Minimum 6 slides, maximum 12 slides
+- Use charts when presenting numerical comparisons, trends, or distributions
+- Use real/estimated numbers, not placeholders
+- Minimum 5 slides, maximum 10 slides
 - End with a ## Recommendations or ## Next Steps slide`;
 
   // Auto-detect if user is asking for a presentation
