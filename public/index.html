@@ -951,6 +951,19 @@ function parseChartBlock(block) {
   return chart;
 }
 
+function parseTableBlock(block) {
+  // Parse markdown table into rows/columns
+  const lines = block.trim().split('\n').filter(l => l.trim().startsWith('|'));
+  if (lines.length < 2) return null;
+
+  const rows = lines
+    .filter(l => !l.match(/^\|[\s\-:|]+\|$/)) // skip separator row
+    .map(l => l.split('|').slice(1, -1).map(c => c.trim()));
+
+  if (rows.length === 0) return null;
+  return { headers: rows[0], rows: rows.slice(1) };
+}
+
 function parseSlides(content) {
   const slides = [];
 
@@ -970,8 +983,39 @@ function parseSlides(content) {
     const chartMatch = section.match(/```chart\n([\s\S]*?)```/);
     if (chartMatch) {
       const chart = parseChartBlock(chartMatch[1]);
-      slides.push({ title: slideTitle, chart, bullets: [] });
+      slides.push({ title: slideTitle, chart, bullets: [], table: null });
       return;
+    }
+
+    // Check for table block in this section
+    const tableMatch = section.match(/```table\n([\s\S]*?)```/);
+    if (tableMatch) {
+      const table = parseTableBlock(tableMatch[1]);
+      if (table) {
+        slides.push({ title: slideTitle, table, bullets: [], chart: null });
+        return;
+      }
+    }
+
+    // Check for inline markdown table (| ... | format)
+    const tableLines = section.split('\n').filter(l => l.trim().startsWith('|') && l.trim().endsWith('|'));
+    if (tableLines.length >= 2) {
+      const table = parseTableBlock(tableLines.join('\n'));
+      if (table) {
+        // Also extract any bullets before/after table
+        const bullets = [];
+        let inTable = false;
+        lines.slice(1).forEach(line => {
+          const trimmed = line.trim();
+          if (trimmed.startsWith('|')) { inTable = true; return; }
+          if (inTable && !trimmed.startsWith('|')) inTable = false;
+          if (!inTable && trimmed && /^[-*•+]/.test(trimmed)) {
+            bullets.push(trimmed.replace(/^[-*•+]\s*/, '').trim());
+          }
+        });
+        slides.push({ title: slideTitle, table, bullets, chart: null });
+        return;
+      }
     }
 
     // Parse bullets - be more flexible with formats
@@ -988,8 +1032,9 @@ function parseSlides(content) {
 
       const trimmed = line.trim();
       if (!trimmed || trimmed.match(/^[-=]{3,}$/)) return;
-      // Skip # headings but not ### subheaders within content
+      // Skip # headings and table rows
       if (/^#{1,2}\s/.test(trimmed)) return;
+      if (trimmed.startsWith('|')) return;
 
       // Match various bullet styles: -, *, •, numbered, lettered
       if (/^[-*•+]/.test(trimmed) || /^\d+[.)]/.test(trimmed) || /^[a-z][.)]/i.test(trimmed)) {
@@ -1006,17 +1051,17 @@ function parseSlides(content) {
     });
 
     if (bullets.length > 0 || slideTitle) {
-      slides.push({ title: slideTitle, bullets });
+      slides.push({ title: slideTitle, bullets, table: null, chart: null });
     }
   });
 
-  // Consolidate thin slides (fewer than 3 bullets, no chart) with next slide
+  // Consolidate thin bullet-only slides (fewer than 4 bullets, no chart/table)
   const consolidated = [];
   let pending = null;
 
   slides.forEach((slide, idx) => {
-    // Don't consolidate chart slides
-    if (slide.chart) {
+    // Don't consolidate chart or table slides
+    if (slide.chart || slide.table) {
       if (pending) {
         consolidated.push(pending);
         pending = null;
@@ -1033,15 +1078,17 @@ function parseSlides(content) {
           ...pending.bullets,
           '§§§' + slide.title, // marker for subheader
           ...slide.bullets
-        ]
+        ],
+        table: null,
+        chart: null
       };
-      if (merged.bullets.length >= 3 || idx === slides.length - 1) {
+      if (merged.bullets.length >= 4 || idx === slides.length - 1) {
         consolidated.push(merged);
         pending = null;
       } else {
         pending = merged;
       }
-    } else if (slide.bullets.length < 3 && idx < slides.length - 1) {
+    } else if (slide.bullets.length < 4 && idx < slides.length - 1 && !slide.table && !slide.chart) {
       pending = slide;
     } else {
       consolidated.push(slide);
@@ -1051,6 +1098,25 @@ function parseSlides(content) {
   if (pending) consolidated.push(pending);
 
   return { title: presentationTitle, slides: consolidated };
+}
+
+function renderTableHTML(table) {
+  if (!table || !table.headers) return '';
+  const headerRow = table.headers.map(h => `<th style="background:#830051;color:#fff;padding:8px 12px;text-align:left;font-size:12px;font-weight:600;border:1px solid #6b0042;">${h}</th>`).join('');
+  const bodyRows = table.rows.map((row, ri) => {
+    const cells = row.map(c => {
+      // Color code status cells
+      let style = 'padding:7px 12px;font-size:12px;border:1px solid #e2e8f0;';
+      const lower = (c || '').toLowerCase();
+      if (lower === 'green' || lower === 'low') style += 'background:#dcfce7;color:#166534;font-weight:600;';
+      else if (lower === 'amber' || lower === 'yellow' || lower === 'medium') style += 'background:#fef3c7;color:#92400e;font-weight:600;';
+      else if (lower === 'red' || lower === 'high') style += 'background:#fee2e2;color:#991b1b;font-weight:600;';
+      else style += ri % 2 === 0 ? 'background:#fff;' : 'background:#f8fafc;';
+      return `<td style="${style}">${c}</td>`;
+    }).join('');
+    return `<tr>${cells}</tr>`;
+  }).join('');
+  return `<table style="width:100%;border-collapse:collapse;margin-top:8px;"><thead><tr>${headerRow}</tr></thead><tbody>${bodyRows}</tbody></table>`;
 }
 
 function renderChartSVG(chart, width = 280, height = 180) {
@@ -1141,59 +1207,7 @@ function renderChartSVG(chart, width = 280, height = 180) {
 }
 
 function renderSlide(slide, index, total) {
-  // Chart slide
-  if (slide.chart) {
-    const chartSvg = renderChartSVG(slide.chart, 280, 180);
-    return `
-      <div style="
-        background: #ffffff;
-        height: 100%;
-        padding: 0;
-        display: flex;
-        flex-direction: column;
-        font-family: 'Calibri', 'Segoe UI', -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif;
-        position: relative;
-        box-sizing: border-box;
-      ">
-        <div style="height: 6px; background: #830051; flex-shrink: 0;"></div>
-        <div style="padding: 24px 28px 40px; flex: 1; display: flex; flex-direction: column; align-items: center;">
-          <div style="font-size: 22px; font-weight: 700; color: #1e293b; margin-bottom: 8px; align-self: flex-start;">${slide.title}</div>
-          <div style="font-size: 14px; color: #64748b; margin-bottom: 16px; align-self: flex-start;">${slide.chart.title}</div>
-          <div style="flex: 1; display: flex; align-items: center; justify-content: center;">
-            ${chartSvg}
-          </div>
-        </div>
-        <div style="position: absolute; bottom: 10px; right: 16px; font-size: 10px; color: #64748b;">${index + 1} / ${total}</div>
-      </div>`;
-  }
-
-  const bulletHtml = slide.bullets.map(b => {
-    const text = String(b || '');
-    // Check for subheader marker
-    if (text.startsWith('§§§')) {
-      const subTitle = text.slice(3);
-      return `<li style="
-        margin: 16px 0 8px 0;
-        line-height: 1.4;
-        color: #830051;
-        font-size: 15px;
-        font-weight: 700;
-        list-style: none;
-      ">${subTitle}</li>`;
-    }
-    const formatted = text.replace(/\*\*(.*?)\*\*/g, '<strong style="color:#1e293b">$1</strong>');
-    return `<li style="
-      margin-bottom: 10px;
-      line-height: 1.6;
-      color: #334155;
-      font-size: 14px;
-      padding-left: 20px;
-      position: relative;
-      list-style: none;
-    "><span style="position:absolute;left:0;color:#830051;font-size:8px;top:6px;">•</span>${formatted}</li>`;
-  }).join('');
-
-  return `
+  const slideWrapper = (content) => `
     <div style="
       background: #ffffff;
       height: 100%;
@@ -1204,42 +1218,66 @@ function renderSlide(slide, index, total) {
       position: relative;
       box-sizing: border-box;
     ">
-      <!-- Purple accent bar at top -->
-      <div style="
-        height: 6px;
-        background: #830051;
-        flex-shrink: 0;
-      "></div>
-
-      <div style="padding: 24px 28px 40px; flex: 1; display: flex; flex-direction: column;">
-        <div style="
-          font-size: 22px;
-          font-weight: 700;
-          color: #1e293b;
-          margin-bottom: 16px;
-          line-height: 1.3;
-        ">${slide.title}</div>
-
-        <ul style="
-          list-style: none;
-          padding: 0;
-          margin: 0;
-          flex: 1;
-        ">
-          ${bulletHtml}
-        </ul>
+      <div style="height: 6px; background: #830051; flex-shrink: 0;"></div>
+      <div style="padding: 16px 20px 32px; flex: 1; display: flex; flex-direction: column; overflow: auto;">
+        <div style="font-size: 20px; font-weight: 700; color: #1e293b; margin-bottom: 12px;">${slide.title}</div>
+        ${content}
       </div>
+      <div style="position: absolute; bottom: 8px; right: 12px; font-size: 10px; color: #64748b;">${index + 1} / ${total}</div>
+    </div>`;
 
-      <div style="
-        position: absolute;
-        bottom: 10px;
-        right: 16px;
-        font-size: 10px;
-        color: #64748b;
-        font-weight: 500;
-      ">${index + 1} / ${total}</div>
-    </div>
-  `;
+  // Chart slide
+  if (slide.chart) {
+    const chartSvg = renderChartSVG(slide.chart, 280, 180);
+    const content = `
+      <div style="font-size: 13px; color: #64748b; margin-bottom: 12px;">${slide.chart.title}</div>
+      <div style="flex: 1; display: flex; align-items: center; justify-content: center;">
+        ${chartSvg}
+      </div>`;
+    return slideWrapper(content);
+  }
+
+  // Table slide
+  if (slide.table) {
+    const tableHtml = renderTableHTML(slide.table);
+    const bulletsHtml = slide.bullets.length > 0
+      ? `<ul style="list-style:none;padding:0;margin:12px 0 0 0;">${slide.bullets.map(b =>
+          `<li style="margin-bottom:6px;font-size:12px;color:#334155;padding-left:16px;position:relative;">
+            <span style="position:absolute;left:0;color:#830051;font-size:8px;top:4px;">•</span>${b}
+          </li>`).join('')}</ul>`
+      : '';
+    return slideWrapper(tableHtml + bulletsHtml);
+  }
+
+  // Bullet slide
+  const bulletHtml = slide.bullets.map(b => {
+    const text = String(b || '');
+    // Check for subheader marker
+    if (text.startsWith('§§§')) {
+      const subTitle = text.slice(3);
+      return `<li style="
+        margin: 12px 0 6px 0;
+        line-height: 1.4;
+        color: #830051;
+        font-size: 14px;
+        font-weight: 700;
+        list-style: none;
+      ">${subTitle}</li>`;
+    }
+    const formatted = text.replace(/\*\*(.*?)\*\*/g, '<strong style="color:#1e293b">$1</strong>');
+    return `<li style="
+      margin-bottom: 8px;
+      line-height: 1.5;
+      color: #334155;
+      font-size: 13px;
+      padding-left: 18px;
+      position: relative;
+      list-style: none;
+    "><span style="position:absolute;left:0;color:#830051;font-size:8px;top:5px;">•</span>${formatted}</li>`;
+  }).join('');
+
+  const content = `<ul style="list-style:none;padding:0;margin:0;flex:1;">${bulletHtml}</ul>`;
+  return slideWrapper(content);
 }
 
 // ── Export functions ──────────────────────────────────────────────────────────
@@ -1581,6 +1619,48 @@ function exportPptx(content, fname, docTitle) {
     });
   };
 
+  // Helper: add a table slide
+  const addTableSlide = (title, table, bullets, slideIndex) => {
+    allSlideBuilders.push((pptx, total) => {
+      const slide = pptx.addSlide();
+      slide.background = { color: BG_WHITE };
+
+      slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: '100%', h: 0.1, fill: { color: AZ_PURPLE } });
+      slide.addText(title, {
+        x: 0.4, y: 0.25, w: 12.5, h: 0.5,
+        fontSize: 22, bold: true, color: TEXT_DARK, fontFace: FONT, valign: 'middle',
+      });
+
+      // Build table data
+      const tableData = [table.headers, ...table.rows];
+      const colW = 12.5 / table.headers.length;
+
+      slide.addTable(tableData, {
+        x: 0.4, y: 0.85, w: 12.5,
+        colW: Array(table.headers.length).fill(colW),
+        fontFace: FONT,
+        fontSize: 11,
+        color: TEXT_BODY,
+        border: { pt: 0.5, color: 'E2E8F0' },
+        autoPage: false,
+        rowH: 0.4,
+        valign: 'middle',
+        align: 'left',
+        headRow: true,
+        headRowFill: { color: AZ_PURPLE },
+        headRowFontColor: 'FFFFFF',
+        headRowFontBold: true,
+        headRowFontSize: 11,
+        fill: (rowIdx) => rowIdx % 2 === 0 ? { color: 'FFFFFF' } : { color: 'F8FAFC' },
+      });
+
+      slide.addText((slideIndex + 1) + ' / ' + total, {
+        x: 11.5, y: 6.8, w: 1, h: 0.3,
+        fontSize: 10, color: TEXT_MUTED, align: 'right', fontFace: FONT,
+      });
+    });
+  };
+
   // Helper: add a content slide - matches preview exactly
   const addContentSlide = (title, bullets, slideIndex) => {
     allSlideBuilders.push((pptx, total) => {
@@ -1592,8 +1672,8 @@ function exportPptx(content, fname, docTitle) {
 
       // Slide title
       slide.addText(title, {
-        x: 0.5, y: 0.4, w: 12.3, h: 0.6,
-        fontSize: 24, bold: true, color: TEXT_DARK, fontFace: FONT, valign: 'middle',
+        x: 0.4, y: 0.25, w: 12.5, h: 0.5,
+        fontSize: 22, bold: true, color: TEXT_DARK, fontFace: FONT, valign: 'middle',
       });
 
       // Build text objects - handle subheader markers and regular bullets
@@ -1656,6 +1736,8 @@ function exportPptx(content, fname, docTitle) {
     parsedSlides.forEach(slide => {
       if (slide.chart) {
         addChartSlide(slide.title, slide.chart, allSlideBuilders.length);
+      } else if (slide.table) {
+        addTableSlide(slide.title, slide.table, slide.bullets, allSlideBuilders.length);
       } else {
         addContentSlide(slide.title, slide.bullets, allSlideBuilders.length);
       }
@@ -1898,53 +1980,63 @@ async function sendMessage() {
   addMessage('user', text, sentImages);
   showThinking();
 
-  const PRESENTATION_INSTRUCTION = `You are creating a professional PowerPoint presentation. Format your ENTIRE response as slides using this exact structure:
+  const PRESENTATION_INSTRUCTION = `You are creating a professional, data-rich PowerPoint presentation. Be CONCISE — consolidate related topics into fewer slides.
 
 # [Presentation Title]
 
-## [Slide 1 Title]
-- Key point one (be specific and data-driven)
-- Key point two
-- Key point three
+## [Slide Title]
+Content goes here...
 
-## [Slide 2 Title]
-- Key point one
-...
+CONTENT TYPES — use the right format for each type of information:
 
-FOR DATA/CHARTS: When you have numerical data to visualize, use this exact format:
+1. BULLET POINTS (for lists, key points):
+- Point one with specific data or fact
+- Point two
+- Point three
 
+2. TABLES (for structured data, comparisons, matrices, overviews):
+\`\`\`table
+| Column 1 | Column 2 | Column 3 |
+| Data A | Data B | Data C |
+| Data D | Data E | Data F |
+\`\`\`
+
+3. CHARTS (for numerical comparisons, trends, distributions):
 \`\`\`chart
 type: bar|line|pie|doughnut
 title: Chart Title
 labels: Label1, Label2, Label3
 data: 10, 25, 15
-colors: #830051, #c026d3, #e879f9
 \`\`\`
 
-Example bar chart:
-\`\`\`chart
-type: bar
-title: Q1 Sales by Region
-labels: North, South, East, West
-data: 45, 32, 28, 51
+RULES:
+- CONSOLIDATE: Aim for 4-6 slides total. Combine related topics.
+- USE TABLES for: contract details, comparisons, risk matrices, timelines, any structured data
+- USE CHARTS for: numerical data, percentages, trends over time
+- USE BULLETS for: key takeaways, recommendations, action items
+- Fill the slide — include 6-10 bullet points OR a full table OR a chart with context
+- Be specific with numbers, dates, percentages — never vague
+- Every slide must have substantial content — no sparse slides
+- For risk/status items, use tables with Status column (Red/Amber/Green)
+
+EXAMPLE - Contract Overview (use table):
+## Contract Overview
+\`\`\`table
+| Item | Details |
+| Contract Value | $2.5M |
+| Duration | 24 months |
+| Start Date | Jan 2025 |
+| Vendor | Acme Corp |
+| Payment Terms | Net 30 |
 \`\`\`
 
-Example pie chart:
-\`\`\`chart
-type: pie
-title: Market Share
-labels: Product A, Product B, Product C
-data: 45, 35, 20
-\`\`\`
-
-Rules:
-- Each ## heading = one slide
-- 4-7 bullet points per slide OR a chart
-- Be specific, professional, and insightful — not generic
-- Use charts when presenting numerical comparisons, trends, or distributions
-- Use real/estimated numbers, not placeholders
-- Minimum 5 slides, maximum 10 slides
-- End with a ## Recommendations or ## Next Steps slide`;
+EXAMPLE - Risk Matrix (use table):
+## Risk Assessment
+\`\`\`table
+| Risk | Impact | Likelihood | Mitigation | Status |
+| Supply delay | High | Medium | Dual sourcing | Amber |
+| Cost overrun | Medium | Low | Fixed price contract | Green |
+\`\`\``;
 
   // Auto-detect if user is asking for a presentation
   const lowerText = text.toLowerCase();
