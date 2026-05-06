@@ -294,6 +294,7 @@
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <div id="system-toggle" onclick="toggleSystem()">+ Add system prompt</div>
           <button id="pres-mode-btn" onclick="togglePresentationMode()" style="background:transparent;border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:#94a3b8;font-size:12px;padding:4px 10px;cursor:pointer;font-family:inherit;transition:all 0.2s" title="Auto-detects when you ask for presentations. Click to force ON.">🎯 Presentation Mode (auto)</button>
+          <button id="search-mode-btn" onclick="toggleSearchMode()" style="background:transparent;border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:#94a3b8;font-size:12px;padding:4px 10px;cursor:pointer;font-family:inherit;transition:all 0.2s" title="Enable web search for current information">🔍 Web Search</button>
         </div>
         <textarea id="system-prompt" placeholder="Optional system prompt — e.g. 'You are a supply chain expert at AstraZeneca...'"></textarea>
       </div>
@@ -337,6 +338,7 @@
 // ── State ─────────────────────────────────────────────────────────────────────
 let messages = [];
 let presentationMode = false;
+let searchMode = false;
 let isLoading = false;
 let currentArtifact = null; // { type, content, title }
 let attachments = []; // { name, isImage, mimeType, base64, textContent }
@@ -556,6 +558,56 @@ function togglePresentationMode() {
     btn.textContent = '🎯 Presentation Mode (auto)';
   }
 }
+
+function toggleSearchMode() {
+  searchMode = !searchMode;
+  const btn = document.getElementById('search-mode-btn');
+  if (searchMode) {
+    btn.style.background = 'rgba(59,130,246,0.3)';
+    btn.style.borderColor = 'rgba(59,130,246,0.6)';
+    btn.style.color = '#93c5fd';
+    btn.textContent = '🔍 Web Search ON';
+  } else {
+    btn.style.background = 'transparent';
+    btn.style.borderColor = 'rgba(255,255,255,0.15)';
+    btn.style.color = '#94a3b8';
+    btn.textContent = '🔍 Web Search';
+  }
+}
+
+async function performWebSearch(query) {
+  try {
+    const resp = await fetch('/api/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, maxResults: 5 }),
+    });
+    const data = await resp.json();
+    if (data.error) {
+      console.error('Search error:', data.error);
+      return null;
+    }
+    return data;
+  } catch (e) {
+    console.error('Search failed:', e);
+    return null;
+  }
+}
+
+function formatSearchResults(searchData) {
+  if (!searchData) return '';
+  let text = '\n\n---\n**Web Search Results:**\n';
+  if (searchData.answer) {
+    text += `\n> ${searchData.answer}\n`;
+  }
+  if (searchData.results && searchData.results.length > 0) {
+    searchData.results.forEach((r, i) => {
+      text += `\n${i + 1}. **${r.title}**\n   ${r.snippet}\n   _Source: ${r.url}_\n`;
+    });
+  }
+  return text;
+}
+
 function clearChat() {
   messages = [];
   const area = document.getElementById('chat-area');
@@ -1911,11 +1963,37 @@ Rules:
     systemWithDocs = `The following documents have been uploaded for reference:\n\n${docText}\n\n${systemWithDocs}`.trim();
   }
 
+  // Web search if enabled - auto-detect or manual toggle
+  const needsSearch = searchMode ||
+    /\b(latest|current|recent|today|2024|2025|2026|news|stock price|weather)\b/i.test(text) ||
+    /\b(what is|who is|how much|when did)\b.*\b(now|today|currently)\b/i.test(text);
+
+  let searchContext = '';
+  if (needsSearch) {
+    const searchData = await performWebSearch(text);
+    if (searchData && (searchData.answer || searchData.results?.length > 0)) {
+      searchContext = '\n\n=== Web Search Results ===\n';
+      if (searchData.answer) {
+        searchContext += `Summary: ${searchData.answer}\n\n`;
+      }
+      if (searchData.results) {
+        searchData.results.forEach((r, i) => {
+          searchContext += `[${i + 1}] ${r.title}\n${r.snippet}\nSource: ${r.url}\n\n`;
+        });
+      }
+      searchContext += '=== End Search Results ===\n\nUse the above search results to inform your response. Cite sources where appropriate.';
+    }
+  }
+
+  const finalSystem = searchContext
+    ? (systemWithDocs ? systemWithDocs + searchContext : searchContext)
+    : systemWithDocs;
+
   try {
     const resp = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages, system: systemWithDocs || undefined, max_tokens: 32000 }),
+      body: JSON.stringify({ messages, system: finalSystem || undefined, max_tokens: 32000 }),
     });
     const data = await resp.json();
     removeThinking();

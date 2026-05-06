@@ -81,6 +81,51 @@ app.all('/api/github/*', async (req, res) => {
   }
 });
 
+// Tavily web search endpoint
+app.post('/api/search', async (req, res) => {
+  const tavilyKey = process.env.TAVILY_API_KEY;
+  if (!tavilyKey) {
+    return res.status(500).json({ error: 'TAVILY_API_KEY not configured' });
+  }
+
+  const { query, maxResults = 5 } = req.body;
+  if (!query) {
+    return res.status(400).json({ error: 'Query required' });
+  }
+
+  try {
+    const response = await fetch('https://api.tavily.com/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        api_key: tavilyKey,
+        query,
+        max_results: maxResults,
+        search_depth: 'basic',
+        include_answer: true,
+        include_raw_content: false,
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      return res.status(response.status).json({ error: `Tavily error: ${err}` });
+    }
+
+    const data = await response.json();
+    return res.json({
+      answer: data.answer || null,
+      results: (data.results || []).map(r => ({
+        title: r.title,
+        url: r.url,
+        snippet: r.content,
+      })),
+    });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`\n  ┌────────────────────────────────────────────┐`);
   console.log(`  │   AZ Claude Chat — Running on port ${PORT}   │`);
@@ -88,6 +133,7 @@ app.listen(PORT, () => {
   console.log(`  └────────────────────────────────────────────┘\n`);
   console.log('  Gateway:', process.env.AI_GATEWAY_URL);
   console.log('  Key loaded:', process.env.AI_GATEWAY_KEY ? 'YES' : 'NO');
+  console.log('  Web search:', process.env.TAVILY_API_KEY ? 'ENABLED' : 'disabled');
 });
 
 
