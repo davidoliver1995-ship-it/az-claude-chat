@@ -293,7 +293,7 @@
       <div style="max-width:820px;margin:0 auto">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <div id="system-toggle" onclick="toggleSystem()">+ Add system prompt</div>
-          <button id="pres-mode-btn" onclick="togglePresentationMode()" style="background:transparent;border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:#94a3b8;font-size:12px;padding:4px 10px;cursor:pointer;font-family:inherit;transition:all 0.2s">🎯 Presentation Mode</button>
+          <button id="pres-mode-btn" onclick="togglePresentationMode()" style="background:transparent;border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:#94a3b8;font-size:12px;padding:4px 10px;cursor:pointer;font-family:inherit;transition:all 0.2s" title="Auto-detects when you ask for presentations. Click to force ON.">🎯 Presentation Mode (auto)</button>
         </div>
         <textarea id="system-prompt" placeholder="Optional system prompt — e.g. 'You are a supply chain expert at AstraZeneca...'"></textarea>
       </div>
@@ -548,12 +548,12 @@ function togglePresentationMode() {
     btn.style.background = 'rgba(131,0,81,0.3)';
     btn.style.borderColor = 'rgba(131,0,81,0.6)';
     btn.style.color = '#f1a3c8';
-    btn.textContent = '🎯 Presentation Mode ON';
+    btn.textContent = '🎯 Presentation Mode FORCED ON';
   } else {
     btn.style.background = 'transparent';
     btn.style.borderColor = 'rgba(255,255,255,0.15)';
     btn.style.color = '#94a3b8';
-    btn.textContent = '🎯 Presentation Mode';
+    btn.textContent = '🎯 Presentation Mode (auto)';
   }
 }
 function clearChat() {
@@ -1605,8 +1605,14 @@ Rules:
 - Minimum 6 slides, maximum 12 slides
 - End with a ## Recommendations or ## Next Steps slide`;
 
+  // Auto-detect if user is asking for a presentation
+  const lowerText = text.toLowerCase();
+  const isAskingForPresentation = presentationMode ||
+    /\b(presentation|powerpoint|pptx|slides?|deck)\b/.test(lowerText) ||
+    /\b(create|make|build|generate|give me|prepare)\b.*\b(presentation|slides?|deck|ppt)\b/.test(lowerText);
+
   let systemWithDocs = document.getElementById('system-prompt').value.trim();
-  if (presentationMode) {
+  if (isAskingForPresentation) {
     systemWithDocs = PRESENTATION_INSTRUCTION + (systemWithDocs ? '\n\n' + systemWithDocs : '');
   }
   if (documentContext.length > 0) {
