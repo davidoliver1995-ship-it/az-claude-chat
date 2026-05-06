@@ -197,6 +197,12 @@
     .att-pill span { overflow: hidden; text-overflow: ellipsis; }
     .att-remove { background: none; border: none; color: #64748b; cursor: pointer; font-size: 15px; line-height: 1; padding: 0; flex-shrink: 0; }
     .att-remove:hover { color: #ef4444; }
+
+    /* ── Document Context Pills ── */
+    #doc-context-area { flex-wrap: wrap; gap: 6px; max-width: 820px; margin: 0 auto 8px; min-height: 0; }
+    .doc-pill { background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); color: #4ade80; font-size: 11px; padding: 3px 8px; border-radius: 12px; display:inline-flex; align-items:center; gap:6px; }
+    .doc-pill .remove { cursor:pointer; opacity:0.7; }
+    .doc-pill .remove:hover { opacity:1; }
     #attach-btn { background: transparent; border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; color: #64748b; cursor: pointer; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 20px; transition: color 0.2s, border-color 0.2s; }
     #attach-btn:hover { color: #e2e8f0; border-color: rgba(255,255,255,0.3); }
     .user-image-preview { max-width: 240px; max-height: 180px; border-radius: 8px; margin-top: 8px; display: block; }
@@ -288,6 +294,7 @@
         <div id="system-toggle" onclick="toggleSystem()">+ Add system prompt</div>
         <textarea id="system-prompt" placeholder="Optional system prompt — e.g. 'You are a supply chain expert at AstraZeneca...'"></textarea>
       </div>
+      <div id="doc-context-area" style="display:none"></div>
       <div id="attachment-pills"></div>
       <div id="input-row">
         <textarea id="message-input" placeholder="Message Claude..." rows="1" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
@@ -329,6 +336,7 @@ let messages = [];
 let isLoading = false;
 let currentArtifact = null; // { type, content, title }
 let attachments = []; // { name, isImage, mimeType, base64, textContent }
+let documentContext = []; // { name, text, charCount }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -352,6 +360,25 @@ function renderAttachmentPills() {
     pill.appendChild(rm);
     container.appendChild(pill);
   });
+}
+
+
+function renderDocContextPills() {
+  const area = document.getElementById('doc-context-area');
+  if (!area) return;
+  area.innerHTML = '';
+  area.style.display = documentContext.length > 0 ? 'flex' : 'none';
+  documentContext.forEach((doc, i) => {
+    const pill = document.createElement('span');
+    pill.className = 'doc-pill';
+    pill.innerHTML = `📄 ${doc.name} (${doc.charCount.toLocaleString()} chars) <span class="remove" onclick="removeDocContext(${i})">✕</span>`;
+    area.appendChild(pill);
+  });
+}
+
+function removeDocContext(index) {
+  documentContext.splice(index, 1);
+  renderDocContextPills();
 }
 
 function removeAttachment(index) {
@@ -428,7 +455,7 @@ async function processFile(file) {
     return;
   }
 
-  // ── PDF / DOCX / PPTX — server-side parsing ─────────────────────────────────
+  // ── PDF / DOCX / PPTX — server-side parsing → background context ────────────
   if (['pdf', 'docx', 'pptx'].includes(ext)) {
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -441,28 +468,21 @@ async function processFile(file) {
         });
         const data = await resp.json();
         if (data.error) {
-          injectTextIntoInput(name, `[${name} — could not parse: ${data.error}]`);
+          // Show error in chat
+          addMessage('assistant', `Could not read ${name}: ${data.error}`);
         } else {
-          const label = ext.toUpperCase();
-          const truncNote = data.truncated ? '\n\n[Note: document was truncated to 50,000 characters]' : '';
-          const fullContent = `The following is the complete content of the ${label} file "${name}" (${data.charCount.toLocaleString()} characters):\n\n${data.text}${truncNote}`;
-          // Inject directly into message input (not via injectTextIntoInput to avoid code fencing)
-          const msgInput = document.getElementById('message-input');
-          const existing = msgInput.value.trim();
-          msgInput.value = (existing ? existing + '\n\n' : '') + fullContent + '\n\nPlease ';
-          autoResize(msgInput);
-          msgInput.focus();
-          msgInput.setSelectionRange(msgInput.value.length, msgInput.value.length);
-          // Skip the normal injectTextIntoInput call
-          attachments.push({ name, isImage: false, mimeType: null, base64: null, textContent: null });
-          renderAttachmentPills();
-          return;
+          // Add to document context (not message input)
+          documentContext.push({ name, text: data.text, charCount: data.charCount });
+          renderDocContextPills();
+          // Show brief confirmation in chat
+          const ext2 = ext.toUpperCase();
+          addMessage('assistant', `📄 **${name}** added to context (${data.charCount.toLocaleString()} characters). I'll reference this document in our conversation. What would you like to know?`);
         }
       } catch(err) {
-        injectTextIntoInput(name, `[${name} — parse error: ${err.message}]`);
-        attachments.push({ name, isImage: false, mimeType: null, base64: null, textContent: null });
-        renderAttachmentPills();
+        addMessage('assistant', `Could not parse ${name}: ${err.message}`);
       }
+      attachments.push({ name, isImage: false, mimeType: null, base64: null, textContent: null });
+      renderAttachmentPills();
     };
     reader.readAsDataURL(file);
     return;
@@ -522,6 +542,7 @@ function clearChat() {
   const area = document.getElementById('chat-area');
   area.innerHTML = `<div class="message assistant"><div class="bubble">Chat cleared. How can I help you?</div></div>`;
   closeArtifact();
+  documentContext = []; renderDocContextPills();
 }
 function showError(msg) {
   const banner = document.getElementById('error-banner');
@@ -1330,13 +1351,19 @@ async function sendMessage() {
   addMessage('user', text, sentImages);
   showThinking();
 
-  const system = document.getElementById('system-prompt').value.trim();
+  let systemWithDocs = document.getElementById('system-prompt').value.trim();
+  if (documentContext.length > 0) {
+    const docText = documentContext.map(d =>
+      `=== Document: ${d.name} ===\n${d.text}\n=== End of ${d.name} ===`
+    ).join('\n\n');
+    systemWithDocs = `The following documents have been uploaded for reference:\n\n${docText}\n\n${systemWithDocs}`.trim();
+  }
 
   try {
     const resp = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages, system: system || undefined, max_tokens: 32000 }),
+      body: JSON.stringify({ messages, system: systemWithDocs || undefined, max_tokens: 32000 }),
     });
     const data = await resp.json();
     removeThinking();
