@@ -1180,6 +1180,13 @@ function bulletToRuns(text) {
 function exportPptx(content, fname, docTitle) {
   if (typeof PptxGenJS === 'undefined') { alert('PowerPoint library not loaded — use Text export instead.'); return; }
 
+  // Ensure content is a string
+  if (!content || typeof content !== 'string') {
+    console.error('exportPptx: invalid content', content);
+    alert('No valid content to export.');
+    return;
+  }
+
   // Auto-show artifact panel with presentation content
   const displayTitle = docTitle || fname;
   showArtifact('presentation', content, displayTitle);
@@ -1250,17 +1257,19 @@ function exportPptx(content, fname, docTitle) {
         // PptxGenJS expects flat array of text objects with options
         // Each bullet = one text object; bold runs handled via formatting
         const textObjs = bullets.map(b => {
-          const bulletText = String(b.text || '');
+          // Handle both object { text, isSub } and plain string formats
+          const bulletText = typeof b === 'string' ? b : String(b?.text || b || '');
+          const isSub = typeof b === 'object' && b?.isSub;
           // Strip markdown bold markers for clean text
           const cleanText = bulletText.replace(/\*\*(.*?)\*\*/g, '$1');
           return {
             text: cleanText,
             options: {
-              bullet: { type: 'bullet', code: '25CF', color: b.isSub ? GREY_DIM : AZ_PURPLE },
-              fontSize: b.isSub ? 14 : 16,
-              color: b.isSub ? GREY_DIM : GREY_LIGHT,
+              bullet: { type: 'bullet', code: '25CF', color: isSub ? GREY_DIM : AZ_PURPLE },
+              fontSize: isSub ? 14 : 16,
+              color: isSub ? GREY_DIM : GREY_LIGHT,
               fontFace: FONT,
-              indentLevel: b.isSub ? 1 : 0,
+              indentLevel: isSub ? 1 : 0,
               breakLine: true,
             },
           };
@@ -1279,6 +1288,7 @@ function exportPptx(content, fname, docTitle) {
 
   // ── Parse content — handle # title and ## slides ──────────────────────────────
   const sections = content.split(/(?=^## )/m).filter(s => s.trim().startsWith('## '));
+  console.log('[PPTX Export] Found', sections.length, 'sections from ## headings');
 
   if (sections.length > 0) {
     sections.forEach(section => {
@@ -1303,6 +1313,7 @@ function exportPptx(content, fname, docTitle) {
           bullets.push({ text, isSub });
         }
       });
+      console.log('[PPTX Export] Slide:', slideTitle, '| Bullets:', bullets.length, bullets.slice(0,2));
 
       // Split into chunks of max 8 bullets
       for (let i = 0; i < Math.max(1, Math.ceil(bullets.length / 8)); i++) {
