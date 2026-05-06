@@ -881,7 +881,10 @@ function parseSlides(content) {
     const bullets = [];
     lines.slice(1).forEach(line => {
       const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) return;
+      if (!trimmed || trimmed.match(/^[-=]{3,}$/)) return;
+      // Skip # headings but not ### subheaders within content
+      if (/^#{1,2}\s/.test(trimmed)) return;
+
       // Match various bullet styles: -, *, •, numbered, lettered
       if (/^[-*•+]/.test(trimmed) || /^\d+[.)]/.test(trimmed) || /^[a-z][.)]/i.test(trimmed)) {
         const text = trimmed
@@ -890,7 +893,7 @@ function parseSlides(content) {
           .replace(/^[a-z][.)]\s*/i, '')
           .trim();
         if (text) bullets.push(text);
-      } else if (trimmed.length > 0 && !trimmed.match(/^[-=]{3,}$/)) {
+      } else if (trimmed.length > 0) {
         // Non-bullet text lines also become bullets
         bullets.push(trimmed);
       }
@@ -901,12 +904,55 @@ function parseSlides(content) {
     }
   });
 
-  return { title: presentationTitle, slides };
+  // Consolidate thin slides (fewer than 3 bullets) with next slide
+  const consolidated = [];
+  let pending = null;
+
+  slides.forEach((slide, idx) => {
+    if (pending) {
+      // Merge: add pending title as a "header" bullet, then its bullets, then current
+      const merged = {
+        title: pending.title,
+        bullets: [
+          ...pending.bullets,
+          '§§§' + slide.title, // marker for subheader
+          ...slide.bullets
+        ]
+      };
+      if (merged.bullets.length >= 3 || idx === slides.length - 1) {
+        consolidated.push(merged);
+        pending = null;
+      } else {
+        pending = merged;
+      }
+    } else if (slide.bullets.length < 3 && idx < slides.length - 1) {
+      pending = slide;
+    } else {
+      consolidated.push(slide);
+    }
+  });
+
+  if (pending) consolidated.push(pending);
+
+  return { title: presentationTitle, slides: consolidated };
 }
 
 function renderSlide(slide, index, total) {
   const bulletHtml = slide.bullets.map(b => {
-    const formatted = String(b || '').replace(/\*\*(.*?)\*\*/g, '<strong style="color:#1e293b">$1</strong>');
+    const text = String(b || '');
+    // Check for subheader marker
+    if (text.startsWith('§§§')) {
+      const subTitle = text.slice(3);
+      return `<li style="
+        margin: 16px 0 8px 0;
+        line-height: 1.4;
+        color: #830051;
+        font-size: 15px;
+        font-weight: 700;
+        list-style: none;
+      ">${subTitle}</li>`;
+    }
+    const formatted = text.replace(/\*\*(.*?)\*\*/g, '<strong style="color:#1e293b">$1</strong>');
     return `<li style="
       margin-bottom: 10px;
       line-height: 1.6;
@@ -1234,65 +1280,62 @@ function exportPptx(content, fname, docTitle) {
     });
   });
 
-  // Helper: add a content slide with proper formatting
-  const addContentSlide = (title, contentItems, slideIndex) => {
+  // Helper: add a content slide - matches preview exactly
+  const addContentSlide = (title, bullets, slideIndex) => {
     allSlideBuilders.push((pptx, total) => {
       const slide = pptx.addSlide();
       slide.background = { color: BG_WHITE };
 
-      // Purple accent bar at top
-      slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: '100%', h: 0.08, fill: { color: AZ_PURPLE } });
+      // Purple accent bar at top (matches preview)
+      slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: '100%', h: 0.1, fill: { color: AZ_PURPLE } });
 
       // Slide title
       slide.addText(title, {
-        x: 0.6, y: 0.35, w: 12, h: 0.7,
-        fontSize: 28, bold: true, color: TEXT_DARK, fontFace: FONT, valign: 'middle',
+        x: 0.5, y: 0.4, w: 12.3, h: 0.6,
+        fontSize: 24, bold: true, color: TEXT_DARK, fontFace: FONT, valign: 'middle',
       });
 
-      // Build text objects with proper hierarchy
-      let yPos = 1.15;
+      // Build text objects - handle subheader markers and regular bullets
       const textObjs = [];
 
-      contentItems.forEach(item => {
-        const itemText = typeof item === 'string' ? item : String(item?.text || item || '');
-        const isSubheader = typeof item === 'object' && item?.isSubheader;
-        const isSub = typeof item === 'object' && item?.isSub;
-        const cleanText = itemText.replace(/\*\*(.*?)\*\*/g, '$1');
+      bullets.forEach(b => {
+        const text = String(b || '');
 
-        if (isSubheader) {
-          // Subheader styling - bold, slightly larger, no bullet
+        // Check for subheader marker (§§§)
+        if (text.startsWith('§§§')) {
+          const subTitle = text.slice(3);
           textObjs.push({
-            text: cleanText,
+            text: subTitle,
             options: {
-              fontSize: 16,
+              fontSize: 15,
               bold: true,
               color: AZ_PURPLE,
               fontFace: FONT,
               breakLine: true,
-              paraSpaceBefore: textObjs.length > 0 ? 12 : 0,
-              paraSpaceAfter: 4,
+              paraSpaceBefore: textObjs.length > 0 ? 14 : 0,
+              paraSpaceAfter: 6,
             },
           });
         } else {
           // Regular bullet
+          const cleanText = text.replace(/\*\*(.*?)\*\*/g, '$1');
           textObjs.push({
             text: cleanText,
             options: {
-              bullet: { type: 'bullet', code: '2022', color: isSub ? TEXT_MUTED : AZ_PURPLE },
-              fontSize: isSub ? 13 : 14,
-              color: isSub ? TEXT_MUTED : TEXT_BODY,
+              bullet: { type: 'bullet', code: '2022', color: AZ_PURPLE },
+              fontSize: 14,
+              color: TEXT_BODY,
               fontFace: FONT,
-              indentLevel: isSub ? 1 : 0,
               breakLine: true,
-              paraSpaceBefore: 2,
-              paraSpaceAfter: 2,
+              paraSpaceBefore: 4,
+              paraSpaceAfter: 4,
             },
           });
         }
       });
 
       if (textObjs.length > 0) {
-        slide.addText(textObjs, { x: 0.6, y: yPos, w: 12, h: 5.4, valign: 'top' });
+        slide.addText(textObjs, { x: 0.5, y: 1.1, w: 12.3, h: 5.5, valign: 'top' });
       }
 
       // Slide number
@@ -1303,108 +1346,20 @@ function exportPptx(content, fname, docTitle) {
     });
   };
 
-  // ── Parse content — handle # title and ## slides ──────────────────────────────
-  const sections = content.split(/(?=^## )/m).filter(s => s.trim().startsWith('## '));
-  console.log('[PPTX Export] Found', sections.length, 'sections from ## headings');
+  // Use the same parseSlides function as the preview
+  const { title: parsedTitle, slides: parsedSlides } = parseSlides(content);
+  console.log('[PPTX Export] Parsed', parsedSlides.length, 'slides');
 
-  // Parse all sections first, then consolidate thin ones
-  const parsedSections = [];
-
-  if (sections.length > 0) {
-    sections.forEach(section => {
-      const secLines = section.split('\n');
-      const slideTitle = secLines[0].replace(/^## /, '').trim();
-      const bodyLines = secLines.slice(1).filter(l => l.trim());
-
-      // Build content items with subheader support
-      const items = [];
-      bodyLines.forEach(line => {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.match(/^[-=]{3,}$/)) return;
-
-        // Check for ### subheader
-        if (trimmed.startsWith('### ')) {
-          items.push({ text: trimmed.replace(/^### /, ''), isSubheader: true });
-          return;
-        }
-        if (trimmed.startsWith('#')) return;
-
-        // Detect sub-bullets (indented lines)
-        const isSub = /^\s{2,}/.test(line);
-        // Strip bullet markers
-        const text = trimmed
-          .replace(/^[-*+•]\s*/, '')
-          .replace(/^\d+[.)]\s*/, '')
-          .replace(/^[a-z][.)]\s*/i, '')
-          .trim();
-        if (text) {
-          items.push({ text, isSub });
-        }
-      });
-
-      parsedSections.push({ title: slideTitle, items });
-    });
-  }
-
-  // Consolidate thin sections (fewer than 3 items) with neighbors
-  const MIN_ITEMS_PER_SLIDE = 3;
-  const consolidatedSections = [];
-  let pendingSection = null;
-
-  parsedSections.forEach((section, idx) => {
-    if (pendingSection) {
-      // Merge with pending
-      pendingSection.items.push({ text: section.title, isSubheader: true });
-      pendingSection.items.push(...section.items);
-
-      // Check if merged section is now big enough
-      if (pendingSection.items.length >= MIN_ITEMS_PER_SLIDE || idx === parsedSections.length - 1) {
-        consolidatedSections.push(pendingSection);
-        pendingSection = null;
-      }
-    } else if (section.items.length < MIN_ITEMS_PER_SLIDE && idx < parsedSections.length - 1) {
-      // Start pending merge
-      pendingSection = { title: section.title, items: [...section.items] };
-    } else {
-      consolidatedSections.push(section);
-    }
-  });
-
-  // Add any remaining pending section
-  if (pendingSection) {
-    consolidatedSections.push(pendingSection);
-  }
-
-  console.log('[PPTX Export] Consolidated to', consolidatedSections.length, 'slides');
-
-  // Create slides from consolidated sections
-  if (consolidatedSections.length > 0) {
-    consolidatedSections.forEach(section => {
-      // Split into chunks of max 10 items if needed
-      const MAX_ITEMS = 10;
-      for (let i = 0; i < Math.max(1, Math.ceil(section.items.length / MAX_ITEMS)); i++) {
-        const chunk = section.items.slice(i * MAX_ITEMS, (i + 1) * MAX_ITEMS);
-        const title = section.items.length > MAX_ITEMS ? section.title + (i > 0 ? ' (cont.)' : '') : section.title;
-        addContentSlide(title, chunk, allSlideBuilders.length);
-      }
+  // Create slides from parsed data
+  if (parsedSlides.length > 0) {
+    parsedSlides.forEach(slide => {
+      addContentSlide(slide.title, slide.bullets, allSlideBuilders.length);
     });
   } else {
-    // No ## headings — create slides from content
-    const lines = content.split('\n').map(l => l.trim()).filter(l => l && !l.match(/^#/) && !l.match(/^[-=]{3,}$/));
+    // Fallback: create a single slide with content
+    const lines = content.split('\n').map(l => l.trim()).filter(l => l && !l.match(/^#/));
     if (lines.length > 0) {
-      const items = lines.map(l => ({
-        text: l.replace(/^[-*+•]\s*/, '').replace(/^\d+[.)]\s*/, '').trim(),
-        isSub: false
-      })).filter(b => b.text);
-
-      // Group into slides of 8 items
-      for (let i = 0; i < items.length; i += 8) {
-        const chunk = items.slice(i, i + 8);
-        const slideNum = Math.floor(i / 8) + 1;
-        const totalSlides = Math.ceil(items.length / 8);
-        const title = totalSlides > 1 ? `Key Points (${slideNum}/${totalSlides})` : (docTitle || 'Key Points');
-        addContentSlide(title, chunk, allSlideBuilders.length);
-      }
+      addContentSlide(docTitle || 'Key Points', lines.slice(0, 10), allSlideBuilders.length);
     }
   }
 
