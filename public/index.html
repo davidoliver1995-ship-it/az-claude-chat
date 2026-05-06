@@ -1631,27 +1631,65 @@ function exportPptx(content, fname, docTitle) {
         fontSize: 22, bold: true, color: TEXT_DARK, fontFace: FONT, valign: 'middle',
       });
 
-      // Build table data
-      const tableData = [table.headers, ...table.rows];
-      const colW = 12.5 / table.headers.length;
+      // Build table with explicit cell styling
+      const numCols = table.headers.length;
+      const colW = 12.5 / numCols;
+
+      // Header row with purple background
+      const headerRow = table.headers.map(h => ({
+        text: h,
+        options: {
+          fill: { color: AZ_PURPLE },
+          color: 'FFFFFF',
+          bold: true,
+          fontFace: FONT,
+          fontSize: 11,
+          valign: 'middle',
+          align: 'left',
+        }
+      }));
+
+      // Data rows with alternating colors
+      const dataRows = table.rows.map((row, ri) => {
+        return row.map(cell => {
+          const cellText = String(cell || '');
+          const lower = cellText.toLowerCase();
+          let fillColor = ri % 2 === 0 ? 'FFFFFF' : 'F8FAFC';
+          let textColor = TEXT_BODY;
+          let bold = false;
+
+          // Color-code status cells
+          if (lower === 'green' || lower === 'low' || lower === 'complete' || lower === 'done') {
+            fillColor = 'DCFCE7'; textColor = '166534'; bold = true;
+          } else if (lower === 'amber' || lower === 'yellow' || lower === 'medium' || lower === 'in progress') {
+            fillColor = 'FEF3C7'; textColor = '92400E'; bold = true;
+          } else if (lower === 'red' || lower === 'high' || lower === 'critical' || lower === 'blocked') {
+            fillColor = 'FEE2E2'; textColor = '991B1B'; bold = true;
+          }
+
+          return {
+            text: cellText,
+            options: {
+              fill: { color: fillColor },
+              color: textColor,
+              bold: bold,
+              fontFace: FONT,
+              fontSize: 10,
+              valign: 'middle',
+              align: 'left',
+            }
+          };
+        });
+      });
+
+      const tableData = [headerRow, ...dataRows];
 
       slide.addTable(tableData, {
         x: 0.4, y: 0.85, w: 12.5,
-        colW: Array(table.headers.length).fill(colW),
-        fontFace: FONT,
-        fontSize: 11,
-        color: TEXT_BODY,
+        colW: Array(numCols).fill(colW),
         border: { pt: 0.5, color: 'E2E8F0' },
         autoPage: false,
-        rowH: 0.4,
-        valign: 'middle',
-        align: 'left',
-        headRow: true,
-        headRowFill: { color: AZ_PURPLE },
-        headRowFontColor: 'FFFFFF',
-        headRowFontBold: true,
-        headRowFontSize: 11,
-        fill: (rowIdx) => rowIdx % 2 === 0 ? { color: 'FFFFFF' } : { color: 'F8FAFC' },
+        rowH: 0.35,
       });
 
       slide.addText((slideIndex + 1) + ' / ' + total, {
@@ -1688,13 +1726,13 @@ function exportPptx(content, fname, docTitle) {
           textObjs.push({
             text: subTitle,
             options: {
-              fontSize: 15,
+              fontSize: 13,
               bold: true,
               color: AZ_PURPLE,
               fontFace: FONT,
               breakLine: true,
-              paraSpaceBefore: textObjs.length > 0 ? 14 : 0,
-              paraSpaceAfter: 6,
+              paraSpaceBefore: textObjs.length > 0 ? 10 : 0,
+              paraSpaceAfter: 4,
             },
           });
         } else {
@@ -1704,12 +1742,12 @@ function exportPptx(content, fname, docTitle) {
             text: cleanText,
             options: {
               bullet: { type: 'bullet', code: '2022', color: AZ_PURPLE },
-              fontSize: 14,
+              fontSize: 12,
               color: TEXT_BODY,
               fontFace: FONT,
               breakLine: true,
-              paraSpaceBefore: 4,
-              paraSpaceAfter: 4,
+              paraSpaceBefore: 2,
+              paraSpaceAfter: 2,
             },
           });
         }

@@ -93,26 +93,46 @@ app.post('/api/search', async (req, res) => {
     return res.status(400).json({ error: 'Query required' });
   }
 
+  const https = await import('https');
+  const postData = JSON.stringify({
+    api_key: tavilyKey,
+    query,
+    max_results: maxResults,
+    search_depth: 'basic',
+    include_answer: true,
+    include_raw_content: false,
+  });
+
+  const options = {
+    hostname: 'api.tavily.com',
+    port: 443,
+    path: '/search',
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(postData),
+    },
+    rejectUnauthorized: false, // Allow self-signed certs (VPN proxy)
+  };
+
   try {
-    const response = await fetch('https://api.tavily.com/search', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        api_key: tavilyKey,
-        query,
-        max_results: maxResults,
-        search_depth: 'basic',
-        include_answer: true,
-        include_raw_content: false,
-      }),
+    const data = await new Promise((resolve, reject) => {
+      const request = https.request(options, (response) => {
+        let body = '';
+        response.on('data', chunk => body += chunk);
+        response.on('end', () => {
+          try {
+            resolve(JSON.parse(body));
+          } catch (e) {
+            reject(new Error('Invalid JSON response'));
+          }
+        });
+      });
+      request.on('error', reject);
+      request.write(postData);
+      request.end();
     });
 
-    if (!response.ok) {
-      const err = await response.text();
-      return res.status(response.status).json({ error: `Tavily error: ${err}` });
-    }
-
-    const data = await response.json();
     return res.json({
       answer: data.answer || null,
       results: (data.results || []).map(r => ({
