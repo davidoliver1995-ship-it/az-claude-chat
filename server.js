@@ -183,23 +183,47 @@ app.post('/api/parse-document', async (req, res) => {
       text = result.value;
 
     } else if (ext === 'pptx') {
-      // PPTX is a zip — extract slide XML text
-      const { Readable } = await import('stream');
+      // PPTX is a zip — extract slide content and speaker notes
       const unzipper = require('unzipper');
       const directory = await unzipper.Open.buffer(buffer);
+
+      // Get slide files
       const slideFiles = directory.files.filter(f => f.path.match(/^ppt\/slides\/slide\d+\.xml$/));
       slideFiles.sort((a, b) => {
         const numA = parseInt(a.path.match(/\d+/)?.[0] || 0);
         const numB = parseInt(b.path.match(/\d+/)?.[0] || 0);
         return numA - numB;
       });
-      const slideTexts = [];
-      for (const sf of slideFiles) {
-        const xml = (await sf.buffer()).toString('utf8');
-        const slideText = xml.replace(/<a:t>(.*?)<\/a:t>/g, '$1 ').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
-        if (slideText) slideTexts.push(slideText);
+
+      // Get speaker notes files
+      const notesFiles = directory.files.filter(f => f.path.match(/^ppt\/notesSlides\/notesSlide\d+\.xml$/));
+      const notesMap = {};
+      for (const nf of notesFiles) {
+        const noteNum = parseInt(nf.path.match(/\d+/)?.[0] || 0);
+        const xml = (await nf.buffer()).toString('utf8');
+        const noteText = xml.replace(/<a:t>(.*?)<\/a:t>/g, '$1 ').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+        if (noteText) notesMap[noteNum] = noteText;
       }
-      text = slideTexts.map((t, i) => `[Slide ${i+1}]\n${t}`).join('\n\n');
+
+      const slideTexts = [];
+      for (let i = 0; i < slideFiles.length; i++) {
+        const sf = slideFiles[i];
+        const slideNum = i + 1;
+        const xml = (await sf.buffer()).toString('utf8');
+
+        // Extract text content
+        const slideText = xml.replace(/<a:t>(.*?)<\/a:t>/g, '$1 ').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+
+        let slideOutput = `[Slide ${slideNum}]\n${slideText || '(No text content)'}`;
+
+        // Add speaker notes if available
+        if (notesMap[slideNum]) {
+          slideOutput += `\n\n[Speaker Notes]\n${notesMap[slideNum]}`;
+        }
+
+        slideTexts.push(slideOutput);
+      }
+      text = slideTexts.join('\n\n---\n\n');
 
     } else {
       return res.status(400).json({ error: `Unsupported format: .${ext}` });

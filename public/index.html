@@ -302,7 +302,7 @@
       <div id="attachment-pills"></div>
       <div id="input-row">
         <textarea id="message-input" placeholder="Message Claude..." rows="1" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
-        <input type="file" id="file-input" style="display:none" multiple accept=".txt,.md,.csv,.json,.xml,.yaml,.yml,.js,.py,.sql,.html,.css,.ts,.java,.r,.pdf,.docx,.xlsx,.xls,.jpg,.jpeg,.png,.gif,.webp" onchange="handleFileSelect(event)">
+        <input type="file" id="file-input" style="display:none" multiple accept=".txt,.md,.csv,.json,.xml,.yaml,.yml,.js,.py,.sql,.html,.css,.ts,.java,.r,.pdf,.docx,.pptx,.xlsx,.xls,.jpg,.jpeg,.png,.gif,.webp" onchange="handleFileSelect(event)">
         <button id="attach-btn" onclick="document.getElementById('file-input').click()" title="Attach file">📎</button>
         <button id="send-btn" onclick="sendMessage()">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
