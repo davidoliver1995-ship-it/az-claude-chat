@@ -173,9 +173,10 @@ app.post('/api/parse-document', async (req, res) => {
     const ext = filename.split('.').pop().toLowerCase();
 
     if (ext === 'pdf') {
-      const pdfParse = require('pdf-parse');
-      const data = await pdfParse(buffer);
-      text = data.text;
+      const { PDFParse } = require('pdf-parse');
+      const parser = new PDFParse({ data: buffer });
+      const result = await parser.getText();
+      text = result.text;
 
     } else if (ext === 'docx') {
       const mammoth = require('mammoth');
