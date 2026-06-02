@@ -213,7 +213,7 @@ app.post('/api/search', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`\n  ┌────────────────────────────────────────────┐`);
   console.log(`  │   AZ Claude Chat — Running on port ${PORT}   │`);
   console.log(`  │   Open: http://localhost:${PORT}              │`);
