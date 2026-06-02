@@ -221,6 +221,7 @@
   </div>
   <div style="display:flex;gap:10px;align-items:center">
     <span id="model-badge">Claude Opus 4.5</span>
+    <a href="/presentation-style-guide.md" target="_blank" style="font-size:11px;color:#94a3b8;text-decoration:none;padding:5px 10px;border:1px solid rgba(255,255,255,0.15);border-radius:8px;" title="View presentation style guide">📊 Style Guide</a>
     <button id="gh-toggle-btn" onclick="toggleGitHub()">🔀 GitHub</button>
     <button id="clear-btn" onclick="clearChat()">Clear</button>
   </div>
@@ -913,6 +914,60 @@ function renderArtifactPreview(type, content) {
   }
 }
 
+// Auto-detect presentation refinement requests and inject context
+function buildPresentationContext() {
+  if (!currentArtifact || currentArtifact.type !== 'presentation') return null;
+
+  const { slides } = parseSlides(currentArtifact.content);
+
+  let context = `\n\n=== CURRENT PRESENTATION CONTEXT ===
+Title: ${currentArtifact.title}
+Slides: ${slides.length}
+
+`;
+
+  slides.forEach((slide, i) => {
+    context += `[Slide ${i + 1}] ${slide.title}\n`;
+    if (slide.bullets && slide.bullets.length > 0) {
+      slide.bullets.slice(0, 3).forEach(b => {
+        context += `  • ${String(b).slice(0, 80)}${String(b).length > 80 ? '...' : ''}\n`;
+      });
+      if (slide.bullets.length > 3) {
+        context += `  (${slide.bullets.length - 3} more bullets)\n`;
+      }
+    }
+    if (slide.table) context += `  [Table: ${slide.table.headers?.length || 0} columns]\n`;
+    if (slide.chart) context += `  [Chart: ${slide.chart.type}]\n`;
+  });
+
+  context += `\n=== END PRESENTATION CONTEXT ===
+
+When the user asks to modify slides, regenerate the FULL presentation with the requested changes, maintaining the same pptxgenjs code format. Reference specific slides by number when making changes.`;
+
+  return context;
+}
+
+// Detect if user message is about refining the current presentation
+function isRefinementRequest(text) {
+  if (!currentArtifact || currentArtifact.type !== 'presentation') return false;
+
+  const lowerText = text.toLowerCase();
+
+  // Explicit slide references
+  if (/\b(slide\s*\d+|slides?\s+\d)/i.test(text)) return true;
+
+  // Refinement keywords in context of having a presentation open
+  const refinementKeywords = [
+    'change', 'modify', 'update', 'edit', 'revise', 'fix', 'improve',
+    'add more', 'remove', 'make it', 'can you', 'please', 'shorten',
+    'expand', 'condense', 'reword', 'rephrase', 'more detail', 'less detail',
+    'too long', 'too short', 'executive summary', 'recommendations',
+    'more data', 'more metrics', 'fewer slides', 'more slides'
+  ];
+
+  return refinementKeywords.some(kw => lowerText.includes(kw));
+}
+
 // ── Slide parser & renderer ───────────────────────────────────────────────────
 function parseChartBlock(block) {
   // Parse chart code block into structured data
@@ -1045,8 +1100,17 @@ function parseSlides(content) {
           .trim();
         if (text) bullets.push(text);
       } else if (trimmed.length > 0) {
-        // Non-bullet text lines also become bullets
-        bullets.push(trimmed);
+        // Portfolio Health lines should pass through for badge detection (not boxed)
+        if (/^Portfolio\s*Health[:\s]/i.test(trimmed)) {
+          bullets.push(trimmed);
+        }
+        // Long paragraph text (120+ chars) should be wrapped in content box for Executive Summary style
+        else if (trimmed.length >= 120) {
+          bullets.push('>>' + trimmed + '<<');
+        } else {
+          // Non-bullet text lines also become bullets
+          bullets.push(trimmed);
+        }
       }
     });
 
@@ -1105,13 +1169,25 @@ function renderTableHTML(table) {
   const headerRow = table.headers.map(h => `<th style="background:#830051;color:#fff;padding:8px 12px;text-align:left;font-size:12px;font-weight:600;border:1px solid #6b0042;">${h}</th>`).join('');
   const bodyRows = table.rows.map((row, ri) => {
     const cells = row.map(c => {
-      // Color code status cells
+      // Color code status cells - comprehensive status detection
       let style = 'padding:7px 12px;font-size:12px;border:1px solid #e2e8f0;';
-      const lower = (c || '').toLowerCase();
-      if (lower === 'green' || lower === 'low') style += 'background:#dcfce7;color:#166534;font-weight:600;';
-      else if (lower === 'amber' || lower === 'yellow' || lower === 'medium') style += 'background:#fef3c7;color:#92400e;font-weight:600;';
-      else if (lower === 'red' || lower === 'high') style += 'background:#fee2e2;color:#991b1b;font-weight:600;';
-      else style += ri % 2 === 0 ? 'background:#fff;' : 'background:#f8fafc;';
+      const lower = (c || '').toLowerCase().trim();
+      // Green statuses
+      if (lower === 'green' || lower === 'low' || lower === 'complete' || lower === 'done' || lower === 'on track' || lower === 'good') {
+        style += 'background:#dcfce7;color:#166534;font-weight:600;';
+      }
+      // Amber/Yellow statuses
+      else if (lower === 'amber' || lower === 'yellow' || lower === 'medium' || lower === 'in progress' || lower === 'at risk' || lower === 'fair' || lower === 'moderate') {
+        style += 'background:#fef3c7;color:#92400e;font-weight:600;';
+      }
+      // Red statuses
+      else if (lower === 'red' || lower === 'high' || lower === 'critical' || lower === 'blocked' || lower === 'delayed' || lower === 'poor') {
+        style += 'background:#fee2e2;color:#991b1b;font-weight:600;';
+      }
+      // Default alternating rows
+      else {
+        style += ri % 2 === 0 ? 'background:#fff;' : 'background:#f8fafc;';
+      }
       return `<td style="${style}">${c}</td>`;
     }).join('');
     return `<tr>${cells}</tr>`;
@@ -1223,6 +1299,7 @@ function renderSlide(slide, index, total) {
         <div style="font-size: 20px; font-weight: 700; color: #1e293b; margin-bottom: 12px;">${slide.title}</div>
         ${content}
       </div>
+      <div style="position: absolute; bottom: 8px; left: 0; right: 0; text-align: center; font-size: 8px; color: #64748b;">CONFIDENTIAL - AstraZeneca Cell Therapy Logistics</div>
       <div style="position: absolute; bottom: 8px; right: 12px; font-size: 10px; color: #64748b;">${index + 1} / ${total}</div>
     </div>`;
 
@@ -1249,8 +1326,111 @@ function renderSlide(slide, index, total) {
     return slideWrapper(tableHtml + bulletsHtml);
   }
 
-  // Bullet slide
-  const bulletHtml = slide.bullets.map(b => {
+  // Bullet slide - with Portfolio Health badges and content boxes
+  let portfolioBadgeHtml = '';
+  let contentBoxItems = [];
+  let regularBullets = [];
+  let inContentBox = false;
+  let contentBoxText = [];
+
+  // Helper to detect Portfolio Health text
+  const getPortfolioHealthBadge = (text) => {
+    const healthMatch = text.match(/Portfolio\s*Health[:\s]*(\w+)/i);
+    if (healthMatch) {
+      const status = healthMatch[1].toLowerCase();
+      let bgColor = '#22C55E'; // Good - green
+      let label = 'Good';
+      if (status === 'poor' || status === 'red' || status === 'critical') {
+        bgColor = '#EF4444'; label = 'Poor';
+      } else if (status === 'fair' || status === 'amber' || status === 'yellow' || status === 'moderate') {
+        bgColor = '#F59E0B'; label = 'Fair';
+      }
+      return `<div style="
+        display: inline-block;
+        background: ${bgColor};
+        color: #ffffff;
+        font-weight: 700;
+        font-size: 12px;
+        padding: 8px 24px;
+        border-radius: 2px;
+        margin-bottom: 12px;
+      ">Portfolio Health: ${label}</div>`;
+    }
+    return null;
+  };
+
+  // Helper to detect content box markers (text in quotes or marked with >>)
+  const isContentBoxStart = (text) => text.startsWith('>>') || text.startsWith('[BOX]');
+  const isContentBoxEnd = (text) => text.endsWith('<<') || text.endsWith('[/BOX]');
+  const isSingleLineBox = (text) => (text.startsWith('>>') && text.endsWith('<<')) ||
+                                    (text.startsWith('[BOX]') && text.endsWith('[/BOX]'));
+
+  // Process bullets for special elements
+  slide.bullets.forEach((b, idx) => {
+    const text = String(b || '');
+
+    // Check for Portfolio Health badge
+    const badge = getPortfolioHealthBadge(text);
+    if (badge) {
+      portfolioBadgeHtml = badge;
+      return;
+    }
+
+    // Check for single-line content box (both >> and << on same line)
+    if (isSingleLineBox(text)) {
+      const cleanText = text.replace(/^>>|^\[BOX\]/, '').replace(/<<$|\[\/BOX\]$/, '').trim();
+      if (cleanText) contentBoxItems.push(cleanText);
+      return;
+    }
+
+    // Check for multi-line content box markers
+    if (isContentBoxStart(text)) {
+      inContentBox = true;
+      const cleanText = text.replace(/^>>|^\[BOX\]/, '').trim();
+      if (cleanText) contentBoxText.push(cleanText);
+      return;
+    }
+    if (inContentBox) {
+      if (isContentBoxEnd(text)) {
+        const cleanText = text.replace(/<<$|\[\/BOX\]$/, '').trim();
+        if (cleanText) contentBoxText.push(cleanText);
+        contentBoxItems.push(contentBoxText.join(' '));
+        contentBoxText = [];
+        inContentBox = false;
+      } else {
+        contentBoxText.push(text);
+      }
+      return;
+    }
+
+    // Regular bullet
+    regularBullets.push(text);
+  });
+
+  // If still in content box at end, close it
+  if (contentBoxText.length > 0) {
+    contentBoxItems.push(contentBoxText.join(' '));
+  }
+
+  // Build content box HTML if any
+  let contentBoxHtml = '';
+  if (contentBoxItems.length > 0) {
+    contentBoxHtml = contentBoxItems.map(boxText => `
+      <div style="
+        background: #F8FAFC;
+        border: 4px solid #830051;
+        border-radius: 2px;
+        padding: 14px 16px;
+        margin-bottom: 12px;
+        font-size: 12px;
+        color: #1e293b;
+        line-height: 1.6;
+      ">${boxText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')}</div>
+    `).join('');
+  }
+
+  // Build bullet HTML
+  const bulletHtml = regularBullets.map(b => {
     const text = String(b || '');
     // Check for subheader marker
     if (text.startsWith('§§§')) {
@@ -1276,7 +1456,11 @@ function renderSlide(slide, index, total) {
     "><span style="position:absolute;left:0;color:#830051;font-size:8px;top:5px;">•</span>${formatted}</li>`;
   }).join('');
 
-  const content = `<ul style="list-style:none;padding:0;margin:0;flex:1;">${bulletHtml}</ul>`;
+  const content = `
+    ${portfolioBadgeHtml}
+    ${contentBoxHtml}
+    <ul style="list-style:none;padding:0;margin:0;flex:1;">${bulletHtml}</ul>
+  `;
   return slideWrapper(content);
 }
 
@@ -1482,8 +1666,580 @@ function bulletToRuns(text) {
   return parts.length > 0 ? parts : [{ text: text }];
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// PptxGenJS Direct Code Execution System
+// Claude generates pptxgenjs code directly for sophisticated layouts
+// ══════════════════════════════════════════════════════════════════════════════
+
+// AZ Colors for code generation (matches what Claude uses in generated code)
+const AZ = {
+  PURPLE: '830051',     // Primary AZ purple
+  NAVY: '1A1F4B',       // Footer/dark navy
+  GREEN: '2E7D32',      // Green status
+  AMBER: 'B8730E',      // Amber status
+  RED: '8B1A1A',        // Red status
+  CREAM: 'F5F2F0',      // Info box background
+  WHITE: 'FFFFFF',      // Slide background
+  GRAY: 'D8D8D8',       // Card borders
+  TEXT_DARK: '1A1A1A',  // Primary text
+  TEXT_GRAY: '5A5A5A',  // Subtitles
+};
+
+// Helper: Add thick purple header bar with white text
+function addHeader(slide, pptx, title, subtitle) {
+  slide.addShape('rect', { x: 0, y: 0, w: '100%', h: 0.8, fill: { color: AZ.PURPLE } });
+  slide.addText(title, { x: 0.3, y: 0.15, w: 12.7, h: 0.45, fontSize: 22, bold: true, color: 'FFFFFF', fontFace: 'Georgia' });
+  if (subtitle) {
+    slide.addText(subtitle, { x: 0.3, y: 0.55, w: 12.7, h: 0.2, fontSize: 10, italic: true, color: 'FFFFFF', fontFace: 'Calibri' });
+  }
+}
+
+// Helper: Add navy footer bar with page numbers
+function addFooter(slide, pptx, text, num, total) {
+  slide.addShape('rect', { x: 0, y: 7.2, w: '100%', h: 0.3, fill: { color: AZ.NAVY } });
+  slide.addText(text, { x: 0.3, y: 7.22, w: 10, h: 0.25, fontSize: 7, italic: true, color: 'FFFFFF', fontFace: 'Calibri' });
+  slide.addText(num + ' / ' + total, { x: 12, y: 7.22, w: 1, h: 0.25, fontSize: 7, color: 'FFFFFF', fontFace: 'Calibri', align: 'right' });
+}
+
+// Helper: Add card with colored left sidebar stripe
+function addCard(slide, pptx, x, y, w, h, color, title, subtitle, items) {
+  // Drop shadow
+  slide.addShape('rect', { x: x + 0.02, y: y + 0.02, w: w, h: h, fill: { color: 'CCCCCC', transparency: 50 } });
+  // Card background
+  slide.addShape('rect', { x: x, y: y, w: w, h: h, fill: { color: AZ.WHITE }, line: { color: AZ.GRAY, width: 0.75 } });
+  // Colored left sidebar
+  slide.addShape('rect', { x: x, y: y, w: 0.06, h: h, fill: { color: color } });
+  // Title
+  slide.addText(title, { x: x + 0.15, y: y + 0.1, w: w - 0.3, h: 0.3, fontSize: 12, bold: true, color: AZ.NAVY, fontFace: 'Georgia' });
+  // Subtitle
+  let cy = y + 0.45;
+  if (subtitle) {
+    slide.addText(subtitle, { x: x + 0.15, y: y + 0.35, w: w - 0.3, h: 0.2, fontSize: 9, italic: true, color: AZ.TEXT_GRAY, fontFace: 'Calibri' });
+    cy = y + 0.6;
+  }
+  // Content items (key-value pairs or strings)
+  if (items && Array.isArray(items)) {
+    items.forEach(function(item) {
+      if (cy > y + h - 0.3) return; // Stop if out of space
+      if (item && typeof item === 'object' && item.label) {
+        slide.addText(String(item.label).toUpperCase(), { x: x + 0.15, y: cy, w: w - 0.3, h: 0.15, fontSize: 6.5, bold: true, color: AZ.TEXT_GRAY, fontFace: 'Calibri' });
+        cy += 0.12;
+        slide.addText(String(item.value || ''), { x: x + 0.15, y: cy, w: w - 0.3, h: 0.15, fontSize: 8, color: AZ.TEXT_DARK, fontFace: 'Calibri' });
+        cy += 0.18;
+      } else if (typeof item === 'string') {
+        slide.addText(item, { x: x + 0.15, y: cy, w: w - 0.3, h: 0.15, fontSize: 8, color: AZ.TEXT_DARK, fontFace: 'Calibri' });
+        cy += 0.18;
+      }
+    });
+  }
+}
+
+// Helper: Add info/callout box with left accent bar
+function addInfoBox(slide, pptx, x, y, w, h, label, text, color) {
+  slide.addShape('rect', { x: x, y: y, w: w, h: h, fill: { color: AZ.CREAM } });
+  slide.addShape('rect', { x: x, y: y, w: 0.05, h: h, fill: { color: color } });
+  let textY = y + 0.08;
+  if (label) {
+    slide.addText(String(label).toUpperCase(), { x: x + 0.12, y: y + 0.08, w: w - 0.2, h: 0.15, fontSize: 7, bold: true, color: AZ.TEXT_DARK, fontFace: 'Calibri' });
+    textY = y + 0.25;
+  }
+  slide.addText(String(text || ''), { x: x + 0.12, y: textY, w: w - 0.2, h: h - (label ? 0.35 : 0.16), fontSize: 9, color: AZ.TEXT_DARK, fontFace: 'Calibri', valign: 'top' });
+}
+
+// Detect if Claude's response contains pptxgenjs code
+function detectPptxCode(content) {
+  if (!content || typeof content !== 'string') return null;
+  // Look for JavaScript code block containing buildPresentation function
+  const codeBlockMatch = content.match(/```(?:javascript|js)\s*\n([\s\S]*?)\n```/i);
+  if (!codeBlockMatch) return null;
+  const code = codeBlockMatch[1];
+  // Check if it contains buildPresentation function
+  if (/function\s+buildPresentation\s*\(\s*pptx\s*\)/.test(code) || /buildPresentation\s*=/.test(code)) {
+    return code;
+  }
+  return null;
+}
+
+// Extract presentation title from Claude's generated code
+function extractPresentationTitle(code) {
+  // Look for first addHeader call with title (the main presentation title)
+  const headerMatch = code.match(/addHeader\s*\(\s*slide\s*,\s*pptx\s*,\s*['"]([^'"]+)['"]/);
+  if (headerMatch) {
+    const title = headerMatch[1].trim();
+    // Skip generic titles
+    if (title && !title.match(/^(Presentation|Title|Slide|Executive)/i)) {
+      return title;
+    }
+    // If generic, try to get a better one from second addHeader
+    const allHeaders = code.matchAll(/addHeader\s*\(\s*slide\s*,\s*pptx\s*,\s*['"]([^'"]+)['"]/g);
+    for (const match of allHeaders) {
+      const t = match[1].trim();
+      if (t && !t.match(/^(Presentation|Title|Slide|Executive Summary)/i)) {
+        return t;
+      }
+    }
+    return title; // Return the first one even if generic
+  }
+
+  // Look for pptx.title assignment
+  const titleMatch = code.match(/pptx\.title\s*=\s*['"]([^'"]+)['"]/);
+  if (titleMatch) return titleMatch[1].trim();
+
+  // Look for comment like "// Slide 1: Executive Summary" or "// Title: Something"
+  const commentMatch = code.match(/\/\/\s*(?:Slide\s*1|Title|Presentation)[:\s-]+([A-Z][^\n]{5,50})/i);
+  if (commentMatch) {
+    const cleaned = commentMatch[1].replace(/^[:\s-]+/, '').trim();
+    if (cleaned.length > 3) return cleaned;
+  }
+
+  return null;
+}
+
+// Validate slide layout for overlapping elements
+function validateSlideLayout(pptx) {
+  const warnings = [];
+  const SLIDE_WIDTH = 13.33;
+  const SLIDE_HEIGHT = 7.5;
+  const HEADER_BOTTOM = 0.8;
+  const FOOTER_TOP = 7.2;
+
+  pptx.slides.forEach((slide, slideIdx) => {
+    const elements = [];
+
+    // Collect all positioned elements
+    if (slide._slideObjects) {
+      slide._slideObjects.forEach((obj, objIdx) => {
+        if (obj.options && typeof obj.options.x === 'number') {
+          const x = obj.options.x;
+          const y = obj.options.y || 0;
+          const w = obj.options.w || 1;
+          const h = obj.options.h || 0.5;
+
+          elements.push({ idx: objIdx, x, y, w, h, type: obj._type || 'unknown' });
+
+          // Check bounds
+          if (x + w > SLIDE_WIDTH + 0.1) {
+            warnings.push(`Slide ${slideIdx + 1}: Element extends past right edge (x=${x}, w=${w})`);
+          }
+          if (y + h > FOOTER_TOP && y < FOOTER_TOP) {
+            warnings.push(`Slide ${slideIdx + 1}: Element overlaps footer area (y=${y}, h=${h})`);
+          }
+          if (y < HEADER_BOTTOM && y + h > 0 && obj._type !== 'rect') {
+            // Allow header rect itself
+          }
+        }
+      });
+    }
+
+    // Check for overlapping elements (simple bounding box check)
+    for (let i = 0; i < elements.length; i++) {
+      for (let j = i + 1; j < elements.length; j++) {
+        const a = elements[i];
+        const b = elements[j];
+
+        // Skip small overlaps (intentional layering like shadows)
+        const overlapX = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
+        const overlapY = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+        const overlapArea = overlapX * overlapY;
+        const smallerArea = Math.min(a.w * a.h, b.w * b.h);
+
+        // Flag if overlap is >50% of smaller element (likely unintentional)
+        if (overlapArea > smallerArea * 0.5 && overlapArea > 0.5) {
+          warnings.push(`Slide ${slideIdx + 1}: Significant overlap between elements at (${a.x.toFixed(1)},${a.y.toFixed(1)}) and (${b.x.toFixed(1)},${b.y.toFixed(1)})`);
+        }
+      }
+    }
+  });
+
+  return warnings;
+}
+
+// Execute Claude's pptxgenjs code and generate the presentation
+function executePptxCode(code, filename) {
+  if (typeof PptxGenJS === 'undefined') {
+    const errMsg = 'PowerPoint library not loaded - cannot generate presentation.';
+    alert(errMsg);
+    throw new Error(errMsg);
+  }
+
+  const pptx = new PptxGenJS();
+  pptx.layout = 'LAYOUT_WIDE';
+  pptx.author = 'AstraZeneca';
+  pptx.company = 'AstraZeneca';
+  pptx.subject = 'Cell Therapy Logistics';
+
+  // Create a function from Claude's code
+  const wrappedCode = `
+    ${code}
+    if (typeof buildPresentation === 'function') {
+      buildPresentation(pptx);
+    } else {
+      throw new Error('buildPresentation(pptx) function not found in generated code');
+    }
+  `;
+
+  // Execute with access to helpers and pptx instance
+  try {
+    const execFunction = new Function('pptx', 'AZ', 'addHeader', 'addFooter', 'addCard', 'addInfoBox', wrappedCode);
+    execFunction(pptx, AZ, addHeader, addFooter, addCard, addInfoBox);
+  } catch (err) {
+    const errMsg = 'Code execution error: ' + err.message + '\n\nLine: ' + (err.lineNumber || 'unknown') + '\n\nCheck browser console for details.';
+    console.error('PPTX Code Execution Error:', err);
+    console.error('Generated code was:', code);
+    alert(errMsg);
+    throw err;
+  }
+
+  // Validate layout before generating
+  const layoutWarnings = validateSlideLayout(pptx);
+  if (layoutWarnings.length > 0) {
+    console.warn('Layout warnings:', layoutWarnings);
+  }
+
+  // Extract better filename from code if not provided
+  let finalFilename = filename;
+  if (!filename || filename === 'presentation') {
+    const extractedTitle = extractPresentationTitle(code);
+    if (extractedTitle) {
+      finalFilename = safeFilename(extractedTitle);
+    }
+  }
+
+  // Generate and download
+  pptx.writeFile({ fileName: (finalFilename || 'presentation') + '.pptx' });
+  console.log(`[PPTX] Generated: ${finalFilename}.pptx (${pptx.slides.length} slides)`);
+  return true;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// AstraZeneca Executive-Style PPTX Export (Fallback)
+// Based on SOW_Comparison_EIA_Modelled presentation styling
+// ══════════════════════════════════════════════════════════════════════════════
+
+// AstraZeneca Brand Color Constants
+const AZ_COLORS = {
+  PURPLE: '830051',           // Primary AZ purple
+  NAVY: '1A1F4B',             // Footer/dark navy
+  CARD_GREEN: '2E7D32',       // Green status/card accent
+  CARD_AMBER: 'B8730E',       // Amber status/card accent
+  CARD_RED_LIGHT: '5F1212',   // Red status light
+  CARD_RED_DARK: '8B1A1A',    // Red status dark
+  BG_CREAM: 'F5F2F0',         // Info box background
+  BG_WHITE: 'FFFFFF',         // Slide background
+  BG_LIGHT: 'F8FAFC',         // Light gray background
+  HIGHLIGHT_GREEN: 'E3F2E3',  // Table highlight cells
+  BORDER_GRAY: 'D8D8D8',      // Card borders
+  TEXT_DARK: '1A1A1A',        // Primary text
+  TEXT_NAVY: '1A1F4B',        // Card titles
+  TEXT_GRAY: '5A5A5A',        // Subtitles/muted
+  TEXT_MUTED: '64748B',       // Footer text
+  ACCENT_GOLD: 'C4922F',      // Gold accent for negotiation status
+};
+
+// Font conventions
+const AZ_FONTS = {
+  HEADER: 'Georgia',    // Headers
+  BODY: 'Calibri',      // Body text
+};
+
+// Slide dimensions (LAYOUT_WIDE: 13.33 x 7.5 inches)
+const SLIDE = {
+  WIDTH: 13.33,
+  HEIGHT: 7.5,
+  MARGIN: 0.25,
+  HEADER_HEIGHT: 0.7,   // Purple header bar (reduced)
+  FOOTER_HEIGHT: 0.28,  // Navy footer bar (reduced)
+};
+
+// ── Helper: Parse text with **bold** markers ─────────────────────────────────
+function parseTextRuns(text, baseOptions = {}) {
+  if (!text || typeof text !== 'string') return [{ text: String(text || ''), options: baseOptions }];
+  const runs = [];
+  const parts = text.split(/(\*\*.*?\*\*)/g);
+  parts.forEach(part => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      runs.push({ text: part.slice(2, -2), options: { ...baseOptions, bold: true } });
+    } else if (part) {
+      runs.push({ text: part, options: baseOptions });
+    }
+  });
+  return runs.length > 0 ? runs : [{ text: text, options: baseOptions }];
+}
+
+// ── Helper: Add thick purple header bar with white text ──────────────────────
+function addHeaderBar(pptx, slide, title, subtitle = null) {
+  // Thick purple header bar
+  slide.addShape('rect', {
+    x: 0, y: 0, w: '100%', h: SLIDE.HEADER_HEIGHT,
+    fill: { color: AZ_COLORS.PURPLE },
+  });
+
+  // Title text (Georgia, bold, white)
+  slide.addText(title, {
+    x: SLIDE.MARGIN, y: 0.12, w: SLIDE.WIDTH - 2 * SLIDE.MARGIN, h: 0.4,
+    fontSize: 20, bold: true, color: 'FFFFFF',
+    fontFace: AZ_FONTS.HEADER, valign: 'middle',
+  });
+
+  // Subtitle if present (Calibri, italic, white)
+  if (subtitle) {
+    slide.addText(subtitle, {
+      x: SLIDE.MARGIN, y: 0.48, w: SLIDE.WIDTH - 2 * SLIDE.MARGIN, h: 0.2,
+      fontSize: 10, italic: true, color: 'FFFFFF',
+      fontFace: AZ_FONTS.BODY, valign: 'top',
+    });
+  }
+}
+
+// ── Helper: Add navy footer bar ──────────────────────────────────────────────
+function addFooterBar(pptx, slide, legendText, slideNum, totalSlides) {
+  const footerY = SLIDE.HEIGHT - SLIDE.FOOTER_HEIGHT;
+
+  // Navy footer bar
+  slide.addShape('rect', {
+    x: 0, y: footerY, w: '100%', h: SLIDE.FOOTER_HEIGHT,
+    fill: { color: AZ_COLORS.NAVY },
+  });
+
+  // Legend text (white, italic)
+  if (legendText) {
+    slide.addText(legendText, {
+      x: SLIDE.MARGIN, y: footerY + 0.05, w: 10, h: 0.18,
+      fontSize: 7, italic: true, color: 'FFFFFF',
+      fontFace: AZ_FONTS.BODY, valign: 'middle',
+    });
+  }
+
+  // Slide number
+  slide.addText(`${slideNum} / ${totalSlides}`, {
+    x: SLIDE.WIDTH - 1.3, y: footerY + 0.05, w: 1, h: 0.18,
+    fontSize: 7, color: 'FFFFFF',
+    fontFace: AZ_FONTS.BODY, align: 'right', valign: 'middle',
+  });
+}
+
+// ── Helper: Add numbered badge (circular) ────────────────────────────────────
+function addNumberedBadge(pptx, slide, x, y, label, color, size = 0.4) {
+  // Circle background
+  slide.addShape(pptx.ShapeType.ellipse, {
+    x: x, y: y, w: size, h: size,
+    fill: { color: color },
+  });
+
+  // Badge text
+  slide.addText(label, {
+    x: x, y: y, w: size, h: size,
+    fontSize: size > 0.35 ? 12 : 10, bold: true, color: 'FFFFFF',
+    fontFace: AZ_FONTS.BODY, align: 'center', valign: 'middle',
+  });
+}
+
+// ── Helper: Add card with colored left sidebar stripe ────────────────────────
+function addCardWithSidebar(pptx, slide, x, y, w, h, accentColor, title, subtitle, content, badgeLabel = null) {
+  const stripeWidth = 0.06;
+  const padding = 0.1;
+  const shadowOffset = 0.02;
+
+  // Drop shadow (subtle gray rectangle offset)
+  slide.addShape('rect', {
+    x: x + shadowOffset, y: y + shadowOffset, w: w, h: h,
+    fill: { color: 'CCCCCC', transparency: 50 },
+  });
+
+  // Main card background with border
+  slide.addShape('rect', {
+    x: x, y: y, w: w, h: h,
+    fill: { color: AZ_COLORS.BG_WHITE },
+    line: { color: AZ_COLORS.BORDER_GRAY, width: 0.75 },
+  });
+
+  // Colored left stripe
+  slide.addShape('rect', {
+    x: x, y: y, w: stripeWidth, h: h,
+    fill: { color: accentColor },
+  });
+
+  let currentY = y + padding;
+  const contentX = x + stripeWidth + padding;
+  const contentW = w - stripeWidth - 2 * padding;
+
+  // Badge and title row
+  if (badgeLabel) {
+    addNumberedBadge(pptx, slide, contentX, currentY, badgeLabel, accentColor, 0.35);
+
+    // Title next to badge
+    slide.addText(title, {
+      x: contentX + 0.45, y: currentY, w: contentW - 0.5, h: 0.35,
+      fontSize: 14, bold: true, color: AZ_COLORS.TEXT_NAVY,
+      fontFace: AZ_FONTS.HEADER, valign: 'middle',
+    });
+    currentY += 0.4;
+  } else {
+    // Title without badge
+    slide.addText(title, {
+      x: contentX, y: currentY, w: contentW, h: 0.35,
+      fontSize: 14, bold: true, color: AZ_COLORS.TEXT_NAVY,
+      fontFace: AZ_FONTS.HEADER, valign: 'middle',
+    });
+    currentY += 0.4;
+  }
+
+  // Subtitle
+  if (subtitle) {
+    slide.addText(subtitle, {
+      x: contentX, y: currentY, w: contentW, h: 0.2,
+      fontSize: 9, italic: true, color: AZ_COLORS.TEXT_GRAY,
+      fontFace: AZ_FONTS.BODY, valign: 'top',
+    });
+    currentY += 0.25;
+  }
+
+  // Colored summary bar below badge area
+  slide.addShape('rect', {
+    x: contentX, y: currentY, w: contentW, h: 0.04,
+    fill: { color: accentColor, transparency: 70 },
+  });
+  currentY += 0.15;
+
+  // Content (key-value pairs or bullet points)
+  if (content && Array.isArray(content)) {
+    content.forEach(item => {
+      // Skip if we're running out of vertical space
+      if (currentY > y + h - 0.3) return;
+
+      if (item && typeof item === 'object' && item.label && item.value !== undefined) {
+        // Key-value pair style - compact
+        slide.addText(String(item.label).toUpperCase(), {
+          x: contentX, y: currentY, w: contentW, h: 0.14,
+          fontSize: 6.5, bold: true, color: AZ_COLORS.TEXT_GRAY,
+          fontFace: AZ_FONTS.BODY, valign: 'top',
+          charSpacing: 0.4,
+        });
+        currentY += 0.11;
+
+        slide.addText(String(item.value), {
+          x: contentX, y: currentY, w: contentW, h: 0.15,
+          fontSize: 8.5, color: AZ_COLORS.TEXT_DARK,
+          fontFace: AZ_FONTS.BODY, valign: 'top',
+        });
+        currentY += 0.16;
+      } else {
+        // Convert any non-string to string for bullet point
+        const itemText = typeof item === 'string' ? item :
+                        (item && typeof item === 'object') ? JSON.stringify(item) : String(item || '');
+        if (itemText && itemText !== '{}' && itemText !== 'undefined') {
+          slide.addText(itemText, {
+            x: contentX, y: currentY, w: contentW, h: 0.15,
+            fontSize: 7.5, color: AZ_COLORS.TEXT_DARK,
+            fontFace: AZ_FONTS.BODY, valign: 'top',
+            bullet: { type: 'bullet', code: '2022', color: accentColor },
+          });
+          currentY += 0.15;
+        }
+      }
+    });
+  }
+
+  return currentY;
+}
+
+// ── Helper: Detect comparison content structure ──────────────────────────────
+function detectComparisonContent(bullets) {
+  // Look for patterns like "Option 1:", "Vendor A:", numbered items with similar structure
+  const comparisonPatterns = [
+    /^(Option|Vendor|Scenario|Alternative|Choice|Plan|Version|Model)\s*\d*[:\s]/i,
+    /^(V\d|#\d|Phase\s*\d|Tier\s*\d)[:\s]/i,
+    /^(\d+)[.)]\s*(.+?)[:]/,
+  ];
+
+  const items = [];
+  let currentItem = null;
+
+  bullets.forEach(bullet => {
+    const text = String(bullet || '');
+    let isNewItem = false;
+    let itemTitle = '';
+
+    for (const pattern of comparisonPatterns) {
+      const match = text.match(pattern);
+      if (match) {
+        isNewItem = true;
+        itemTitle = text;
+        break;
+      }
+    }
+
+    if (isNewItem) {
+      if (currentItem) items.push(currentItem);
+      currentItem = { title: itemTitle, details: [] };
+    } else if (currentItem) {
+      currentItem.details.push(text);
+    }
+  });
+
+  if (currentItem) items.push(currentItem);
+
+  // Need at least 2 comparable items
+  return items.length >= 2 ? items : null;
+}
+
+// ── Helper: Detect metrics content ───────────────────────────────────────────
+function detectMetricsContent(bullets) {
+  // Look for key-value patterns like "Metric: Value" or "Label: $X" or "Name: 123%"
+  const metricPatterns = [
+    /^(.+?):\s*(\$[\d,.]+[KMB]?|\d+[%]?|\d+\.\d+|[\d,]+\s*(days?|weeks?|months?|years?|units?|items?))\s*$/i,
+    /^(.+?):\s*(High|Medium|Low|Good|Fair|Poor|Green|Amber|Red|Complete|In Progress|Delayed)\s*$/i,
+  ];
+
+  const metrics = [];
+  const nonMetrics = [];
+
+  bullets.forEach(bullet => {
+    const text = String(bullet || '');
+    let isMetric = false;
+
+    for (const pattern of metricPatterns) {
+      const match = text.match(pattern);
+      if (match) {
+        metrics.push({ label: match[1].trim(), value: match[2].trim() });
+        isMetric = true;
+        break;
+      }
+    }
+
+    if (!isMetric) nonMetrics.push(text);
+  });
+
+  // Need at least 3 metrics to use metric layout
+  return metrics.length >= 3 ? { metrics, remaining: nonMetrics } : null;
+}
+
+// ── Helper: Determine card accent color based on content ─────────────────────
+function getCardAccentColor(text, index) {
+  const lower = (text || '').toLowerCase();
+
+  // Status-based colors
+  if (lower.includes('green') || lower.includes('good') || lower.includes('complete') || lower.includes('success')) {
+    return AZ_COLORS.CARD_GREEN;
+  }
+  if (lower.includes('amber') || lower.includes('yellow') || lower.includes('moderate') || lower.includes('in progress') || lower.includes('at risk')) {
+    return AZ_COLORS.CARD_AMBER;
+  }
+  if (lower.includes('red') || lower.includes('critical') || lower.includes('poor') || lower.includes('delayed') || lower.includes('blocked')) {
+    return AZ_COLORS.CARD_RED_DARK;
+  }
+
+  // Default rotation based on index
+  const defaultColors = [AZ_COLORS.CARD_GREEN, AZ_COLORS.CARD_AMBER, AZ_COLORS.PURPLE, AZ_COLORS.NAVY];
+  return defaultColors[index % defaultColors.length];
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Main PPTX Export Function
+// ══════════════════════════════════════════════════════════════════════════════
+
 function exportPptx(content, fname, docTitle) {
-  if (typeof PptxGenJS === 'undefined') { alert('PowerPoint library not loaded — use Text export instead.'); return; }
+  if (typeof PptxGenJS === 'undefined') { alert('PowerPoint library not loaded - use Text export instead.'); return; }
 
   // Ensure content is a string
   if (!content || typeof content !== 'string') {
@@ -1496,19 +2252,26 @@ function exportPptx(content, fname, docTitle) {
   const displayTitle = docTitle || fname;
   showArtifact('presentation', content, displayTitle);
 
+  // Check if Claude generated pptxgenjs code directly
+  const pptxCode = detectPptxCode(content);
+  if (pptxCode) {
+    console.log('[PPTX Export] Detected pptxgenjs code, executing directly...');
+    const success = executePptxCode(pptxCode, fname);
+    if (success) {
+      console.log('[PPTX Export] Successfully generated presentation from Claude code');
+      return; // Successfully generated from code
+    }
+    console.log('[PPTX Export] Code execution failed, falling back to markdown conversion');
+  }
+
+  // Fallback: Convert markdown to slides using existing logic
+  console.log('[PPTX Export] Using markdown-to-slide conversion (fallback)');
+
   const pptx = new PptxGenJS();
   pptx.layout = 'LAYOUT_WIDE';
   pptx.author = 'AstraZeneca';
   pptx.company = 'AstraZeneca';
-
-  // Light professional theme
-  const BG_WHITE = 'FFFFFF';
-  const BG_LIGHT = 'F8FAFC';
-  const AZ_PURPLE = '830051';
-  const TEXT_DARK = '1E293B';
-  const TEXT_BODY = '334155';
-  const TEXT_MUTED = '64748B';
-  const FONT = 'Calibri';
+  pptx.subject = 'Cell Therapy Logistics';
 
   const now = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 
@@ -1516,49 +2279,72 @@ function exportPptx(content, fname, docTitle) {
   const titleMatch = content.match(/^# (.+)$/m);
   const presentationTitle = titleMatch ? titleMatch[1].trim() : (docTitle || fname);
 
+  // Extract optional subtitle (first line after title that isn't a heading)
+  let presentationSubtitle = null;
+  const subtitleMatch = content.match(/^# .+\n+([^#\n][^\n]*)/m);
+  if (subtitleMatch && subtitleMatch[1].trim().length > 10 && subtitleMatch[1].trim().length < 100) {
+    presentationSubtitle = subtitleMatch[1].trim();
+  }
+
   // Collect all slides first so we can add slide numbers
   const allSlideBuilders = [];
 
-  // ── Title slide - clean professional ──────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════════
+  // TITLE SLIDE - Executive AstraZeneca Style
+  // ══════════════════════════════════════════════════════════════════════════════
   allSlideBuilders.push((pptx, total) => {
     const slide = pptx.addSlide();
-    slide.background = { color: BG_WHITE };
-    slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: '100%', h: 0.08, fill: { color: AZ_PURPLE } });
+    slide.background = { color: AZ_COLORS.BG_WHITE };
+
+    // Thick purple header bar
+    slide.addShape('rect', {
+      x: 0, y: 0, w: '100%', h: SLIDE.HEADER_HEIGHT,
+      fill: { color: AZ_COLORS.PURPLE },
+    });
+
+    // Title in header (Georgia, bold, white)
     slide.addText(presentationTitle, {
-      x: 0.5, y: 2.4, w: 12.3, h: 1.5,
-      fontSize: 36, bold: true, color: TEXT_DARK,
-      align: 'left', valign: 'middle', fontFace: FONT, wrap: true,
+      x: SLIDE.MARGIN, y: 0.15, w: SLIDE.WIDTH - 2 * SLIDE.MARGIN, h: 0.55,
+      fontSize: 24, bold: true, color: 'FFFFFF',
+      fontFace: AZ_FONTS.HEADER, valign: 'middle', wrap: true,
     });
-    slide.addShape(pptx.ShapeType.rect, { x: 0.5, y: 3.9, w: 2, h: 0.05, fill: { color: AZ_PURPLE } });
+
+    // Subtitle in header if present
+    if (presentationSubtitle) {
+      slide.addText(presentationSubtitle, {
+        x: SLIDE.MARGIN, y: 0.6, w: SLIDE.WIDTH - 2 * SLIDE.MARGIN, h: 0.25,
+        fontSize: 11, italic: true, color: 'FFFFFF',
+        fontFace: AZ_FONTS.BODY, valign: 'top',
+      });
+    }
+
+    // Date and confidential notice below header
     slide.addText(now, {
-      x: 0.5, y: 4.2, w: 8, h: 0.35,
-      fontSize: 12, color: TEXT_MUTED, align: 'left', fontFace: FONT,
+      x: SLIDE.MARGIN, y: SLIDE.HEADER_HEIGHT + 0.3, w: 4, h: 0.3,
+      fontSize: 12, color: AZ_COLORS.TEXT_GRAY,
+      fontFace: AZ_FONTS.BODY, valign: 'middle',
     });
-    slide.addText('1 / ' + total, {
-      x: 11.5, y: 6.85, w: 1, h: 0.2,
-      fontSize: 8, color: TEXT_MUTED, align: 'right', fontFace: FONT,
+
+    // Decorative purple accent line
+    slide.addShape('rect', {
+      x: SLIDE.MARGIN, y: SLIDE.HEADER_HEIGHT + 0.7, w: 2, h: 0.05,
+      fill: { color: AZ_COLORS.PURPLE },
     });
+
+    // Navy footer bar
+    addFooterBar(pptx, slide, 'CONFIDENTIAL - AstraZeneca Cell Therapy Logistics', 1, total);
   });
 
-  // Helper: add a chart slide - compact layout
+  // ══════════════════════════════════════════════════════════════════════════════
+  // CHART SLIDE - Professional with thick header
+  // ══════════════════════════════════════════════════════════════════════════════
   const addChartSlide = (title, chart, slideIndex) => {
     allSlideBuilders.push((pptx, total) => {
       const slide = pptx.addSlide();
-      slide.background = { color: BG_WHITE };
+      slide.background = { color: AZ_COLORS.BG_WHITE };
 
-      slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: '100%', h: 0.06, fill: { color: AZ_PURPLE } });
-
-      slide.addText(title, {
-        x: 0.3, y: 0.12, w: 12.7, h: 0.35,
-        fontSize: 18, bold: true, color: TEXT_DARK, fontFace: FONT, valign: 'middle',
-      });
-
-      if (chart.title) {
-        slide.addText(chart.title, {
-          x: 0.3, y: 0.5, w: 12.7, h: 0.3,
-          fontSize: 11, color: TEXT_MUTED, fontFace: FONT,
-        });
-      }
+      // Thick purple header
+      addHeaderBar(pptx, slide, title, chart.title || null);
 
       const pptxChartType = {
         'bar': pptx.ChartType.bar,
@@ -1576,79 +2362,99 @@ function exportPptx(content, fname, docTitle) {
       const chartColors = chart.colors.map(c => c.replace('#', ''));
 
       const isPie = chart.type === 'pie' || chart.type === 'doughnut';
+      const chartY = SLIDE.HEADER_HEIGHT + 0.15;
+      const chartH = SLIDE.HEIGHT - SLIDE.HEADER_HEIGHT - SLIDE.FOOTER_HEIGHT - 0.3;
+
       slide.addChart(pptxChartType, chartData, {
-        x: isPie ? 1.5 : 0.3,
-        y: 0.85,
-        w: isPie ? 10.5 : 12.7,
-        h: 5.8,
+        x: isPie ? 1.5 : SLIDE.MARGIN,
+        y: chartY,
+        w: isPie ? 10.5 : SLIDE.WIDTH - 2 * SLIDE.MARGIN,
+        h: chartH,
         showLegend: true,
         legendPos: isPie ? 'r' : 'b',
         showValue: !isPie,
         dataLabelPosition: 'outEnd',
         dataLabelFontSize: 9,
-        dataLabelColor: TEXT_BODY,
+        dataLabelColor: AZ_COLORS.TEXT_DARK,
+        dataLabelFontFace: AZ_FONTS.BODY,
         chartColors: chartColors,
         barGapWidthPct: 40,
         showCatAxisTitle: false,
         showValAxisTitle: false,
-        catAxisLabelColor: TEXT_MUTED,
-        valAxisLabelColor: TEXT_MUTED,
+        catAxisLabelColor: AZ_COLORS.TEXT_GRAY,
+        valAxisLabelColor: AZ_COLORS.TEXT_GRAY,
         catAxisLabelFontSize: 9,
         valAxisLabelFontSize: 9,
+        catAxisLabelFontFace: AZ_FONTS.BODY,
+        valAxisLabelFontFace: AZ_FONTS.BODY,
       });
 
-      slide.addText((slideIndex + 1) + ' / ' + total, {
-        x: 11.5, y: 6.85, w: 1, h: 0.2,
-        fontSize: 8, color: TEXT_MUTED, align: 'right', fontFace: FONT,
-      });
+      // Navy footer
+      addFooterBar(pptx, slide, 'CONFIDENTIAL - AstraZeneca Cell Therapy Logistics', slideIndex + 1, total);
     });
   };
 
-  // Helper: add a table slide - compact layout
+  // ══════════════════════════════════════════════════════════════════════════════
+  // TABLE SLIDE - Professional with purple headers and highlight detection
+  // ══════════════════════════════════════════════════════════════════════════════
   const addTableSlide = (title, table, bullets, slideIndex) => {
     allSlideBuilders.push((pptx, total) => {
       const slide = pptx.addSlide();
-      slide.background = { color: BG_WHITE };
+      slide.background = { color: AZ_COLORS.BG_WHITE };
 
-      slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: '100%', h: 0.06, fill: { color: AZ_PURPLE } });
-      slide.addText(title, {
-        x: 0.3, y: 0.12, w: 12.7, h: 0.35,
-        fontSize: 18, bold: true, color: TEXT_DARK, fontFace: FONT, valign: 'middle',
-      });
+      // Thick purple header
+      addHeaderBar(pptx, slide, title);
 
       // Build table with explicit cell styling
       const numCols = table.headers.length;
-      const colW = 12.7 / numCols;
+      const tableW = SLIDE.WIDTH - 2 * SLIDE.MARGIN;
+      const colW = tableW / numCols;
 
       // Header row with purple background
       const headerRow = table.headers.map(h => ({
         text: h,
         options: {
-          fill: { color: AZ_PURPLE },
+          fill: { color: AZ_COLORS.PURPLE },
           color: 'FFFFFF',
           bold: true,
-          fontFace: FONT,
-          fontSize: 9,
+          fontFace: AZ_FONTS.BODY,
+          fontSize: 10,
           valign: 'middle',
           align: 'left',
         }
       }));
 
-      // Data rows with alternating colors
+      // Data rows with alternating colors and comprehensive status/highlight detection
       const dataRows = table.rows.map((row, ri) => {
-        return row.map(cell => {
+        return row.map((cell, ci) => {
           const cellText = String(cell || '');
-          const lower = cellText.toLowerCase();
-          let fillColor = ri % 2 === 0 ? 'FFFFFF' : 'F8FAFC';
-          let textColor = TEXT_BODY;
+          const lower = cellText.toLowerCase().trim();
+          let fillColor = ri % 2 === 0 ? AZ_COLORS.BG_WHITE : AZ_COLORS.BG_LIGHT;
+          let textColor = AZ_COLORS.TEXT_DARK;
           let bold = false;
 
-          // Color-code status cells
-          if (lower === 'green' || lower === 'low' || lower === 'complete' || lower === 'done' || lower === 'on track') {
+          // Detect positive changes (e.g., contains + or improvement keywords)
+          if (cellText.includes('+') || lower.includes('increase') || lower.includes('improvement') || lower.includes('better')) {
+            fillColor = AZ_COLORS.HIGHLIGHT_GREEN;
+            textColor = AZ_COLORS.CARD_GREEN;
+            bold = true;
+          }
+          // Detect negative changes
+          else if (cellText.includes('-') && /\d/.test(cellText) || lower.includes('decrease') || lower.includes('worse')) {
+            fillColor = 'FEE2E2';
+            textColor = AZ_COLORS.CARD_RED_DARK;
+            bold = true;
+          }
+          // Status color detection - green statuses
+          else if (lower === 'green' || lower === 'low' || lower === 'complete' || lower === 'done' || lower === 'on track' || lower === 'good' || lower === 'yes' || lower === 'active') {
             fillColor = 'DCFCE7'; textColor = '166534'; bold = true;
-          } else if (lower === 'amber' || lower === 'yellow' || lower === 'medium' || lower === 'in progress' || lower === 'at risk') {
+          }
+          // Amber/yellow statuses
+          else if (lower === 'amber' || lower === 'yellow' || lower === 'medium' || lower === 'in progress' || lower === 'at risk' || lower === 'fair' || lower === 'moderate' || lower === 'pending') {
             fillColor = 'FEF3C7'; textColor = '92400E'; bold = true;
-          } else if (lower === 'red' || lower === 'high' || lower === 'critical' || lower === 'blocked' || lower === 'delayed') {
+          }
+          // Red statuses
+          else if (lower === 'red' || lower === 'high' || lower === 'critical' || lower === 'blocked' || lower === 'delayed' || lower === 'poor' || lower === 'no' || lower === 'inactive') {
             fillColor = 'FEE2E2'; textColor = '991B1B'; bold = true;
           }
 
@@ -1658,7 +2464,7 @@ function exportPptx(content, fname, docTitle) {
               fill: { color: fillColor },
               color: textColor,
               bold: bold,
-              fontFace: FONT,
+              fontFace: AZ_FONTS.BODY,
               fontSize: 9,
               valign: 'middle',
               align: 'left',
@@ -1668,42 +2474,325 @@ function exportPptx(content, fname, docTitle) {
       });
 
       const tableData = [headerRow, ...dataRows];
+      const tableY = SLIDE.HEADER_HEIGHT + 0.15;
+      const maxTableH = SLIDE.HEIGHT - SLIDE.HEADER_HEIGHT - SLIDE.FOOTER_HEIGHT - 0.3;
+      const rowH = Math.min(0.35, maxTableH / (table.rows.length + 1));
 
       slide.addTable(tableData, {
-        x: 0.3, y: 0.55, w: 12.7,
+        x: SLIDE.MARGIN,
+        y: tableY,
+        w: tableW,
         colW: Array(numCols).fill(colW),
-        border: { pt: 0.5, color: 'E2E8F0' },
+        border: { pt: 0.75, color: AZ_COLORS.BORDER_GRAY },
         autoPage: false,
-        rowH: 0.28,
+        rowH: rowH,
       });
 
-      slide.addText((slideIndex + 1) + ' / ' + total, {
-        x: 11.5, y: 6.85, w: 1, h: 0.2,
-        fontSize: 8, color: TEXT_MUTED, align: 'right', fontFace: FONT,
-      });
+      // Navy footer
+      addFooterBar(pptx, slide, 'CONFIDENTIAL - AstraZeneca Cell Therapy Logistics', slideIndex + 1, total);
     });
   };
 
-  // Helper: add a content slide - dense professional layout
+  // ══════════════════════════════════════════════════════════════════════════════
+  // COMPARISON SLIDE - Side-by-side cards with colored sidebars
+  // ══════════════════════════════════════════════════════════════════════════════
+  const addComparisonSlide = (title, comparisonItems, slideIndex) => {
+    allSlideBuilders.push((pptx, total) => {
+      const slide = pptx.addSlide();
+      slide.background = { color: AZ_COLORS.BG_WHITE };
+
+      // Thick purple header
+      addHeaderBar(pptx, slide, title);
+
+      const numCards = Math.min(comparisonItems.length, 4);
+      const cardY = SLIDE.HEADER_HEIGHT + 0.15;
+      const cardH = SLIDE.HEIGHT - SLIDE.HEADER_HEIGHT - SLIDE.FOOTER_HEIGHT - 0.3;
+      const totalWidth = SLIDE.WIDTH - 2 * SLIDE.MARGIN;
+      const cardGap = 0.2;
+      const cardW = (totalWidth - (numCards - 1) * cardGap) / numCards;
+
+      comparisonItems.slice(0, 4).forEach((item, idx) => {
+        const cardX = SLIDE.MARGIN + idx * (cardW + cardGap);
+        const accentColor = getCardAccentColor(item.title + ' ' + item.details.join(' '), idx);
+
+        // Extract subtitle if present (text in parentheses or after dash)
+        let cardTitle = item.title;
+        let cardSubtitle = null;
+        const subtitleMatch = item.title.match(/^(.+?)\s*[-–]\s*(.+)$/) || item.title.match(/^(.+?)\s*\((.+)\)$/);
+        if (subtitleMatch) {
+          cardTitle = subtitleMatch[1].trim();
+          cardSubtitle = subtitleMatch[2].trim();
+        }
+
+        // Badge label (V1, V2, #1, #2, etc.)
+        let badgeLabel = String(idx + 1);
+        const versionMatch = item.title.match(/\b(V\d+|Version\s*\d+|Option\s*\d+|#\d+)/i);
+        if (versionMatch) {
+          badgeLabel = versionMatch[1].replace(/Version\s*/i, 'V').replace(/Option\s*/i, '#');
+        }
+
+        // Parse details into content items
+        const contentItems = item.details.map(d => {
+          // Check if it's a key: value pair
+          const kvMatch = d.match(/^([^:]+):\s*(.+)$/);
+          if (kvMatch) {
+            return { label: kvMatch[1].trim(), value: kvMatch[2].trim() };
+          }
+          return d;
+        });
+
+        addCardWithSidebar(pptx, slide, cardX, cardY, cardW, cardH, accentColor, cardTitle, cardSubtitle, contentItems, badgeLabel);
+      });
+
+      // Navy footer
+      addFooterBar(pptx, slide, 'CONFIDENTIAL - AstraZeneca Cell Therapy Logistics', slideIndex + 1, total);
+    });
+  };
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // METRICS SLIDE - Key metrics with badges and info boxes
+  // ══════════════════════════════════════════════════════════════════════════════
+  const addMetricSlide = (title, metricsData, slideIndex) => {
+    allSlideBuilders.push((pptx, total) => {
+      const slide = pptx.addSlide();
+      slide.background = { color: AZ_COLORS.BG_WHITE };
+
+      // Thick purple header
+      addHeaderBar(pptx, slide, title);
+
+      const contentY = SLIDE.HEADER_HEIGHT + 0.2;
+      const contentH = SLIDE.HEIGHT - SLIDE.HEADER_HEIGHT - SLIDE.FOOTER_HEIGHT - 0.4;
+
+      // Metrics in a grid layout
+      const metrics = metricsData.metrics;
+      const numMetrics = Math.min(metrics.length, 8);
+      const cols = numMetrics <= 4 ? numMetrics : Math.ceil(numMetrics / 2);
+      const rows = numMetrics <= 4 ? 1 : 2;
+      const metricW = (SLIDE.WIDTH - 2 * SLIDE.MARGIN - (cols - 1) * 0.2) / cols;
+      const metricH = rows === 1 ? Math.min(1.8, contentH) : Math.min(1.5, contentH / 2 - 0.1);
+
+      metrics.slice(0, 8).forEach((metric, idx) => {
+        const col = idx % cols;
+        const row = Math.floor(idx / cols);
+        const x = SLIDE.MARGIN + col * (metricW + 0.2);
+        const y = contentY + row * (metricH + 0.2);
+
+        // Determine metric color based on value
+        const lower = (metric.value || '').toLowerCase();
+        let metricColor = AZ_COLORS.NAVY;
+        if (lower.includes('green') || lower.includes('good') || lower.includes('complete') || lower.includes('+')) {
+          metricColor = AZ_COLORS.CARD_GREEN;
+        } else if (lower.includes('amber') || lower.includes('medium') || lower.includes('at risk')) {
+          metricColor = AZ_COLORS.CARD_AMBER;
+        } else if (lower.includes('red') || lower.includes('poor') || lower.includes('critical')) {
+          metricColor = AZ_COLORS.CARD_RED_DARK;
+        }
+
+        // Metric card background
+        slide.addShape('rect', {
+          x: x, y: y, w: metricW, h: metricH,
+          fill: { color: AZ_COLORS.BG_CREAM },
+          line: { color: AZ_COLORS.BORDER_GRAY, width: 0.5 },
+        });
+
+        // Top color bar
+        slide.addShape('rect', {
+          x: x, y: y, w: metricW, h: 0.06,
+          fill: { color: metricColor },
+        });
+
+        // Metric label (uppercase)
+        slide.addText(metric.label.toUpperCase(), {
+          x: x + 0.1, y: y + 0.15, w: metricW - 0.2, h: 0.3,
+          fontSize: 8, bold: true, color: AZ_COLORS.TEXT_GRAY,
+          fontFace: AZ_FONTS.BODY, valign: 'top',
+          charSpacing: 0.5,
+        });
+
+        // Metric value (large)
+        slide.addText(String(metric.value || ''), {
+          x: x + 0.1, y: y + 0.4, w: metricW - 0.2, h: metricH - 0.5,
+          fontSize: 18, bold: true, color: metricColor,
+          fontFace: AZ_FONTS.HEADER, valign: 'middle', align: 'center',
+        });
+      });
+
+      // Remaining bullets as info boxes below metrics
+      if (metricsData.remaining && metricsData.remaining.length > 0) {
+        const infoY = contentY + rows * (metricH + 0.2) + 0.2;
+        const infoH = SLIDE.HEIGHT - SLIDE.FOOTER_HEIGHT - infoY - 0.15;
+
+        if (infoH > 0.5) {
+          const infoText = metricsData.remaining.join('\n');
+          addInfoBox(pptx, slide, SLIDE.MARGIN, infoY, SLIDE.WIDTH - 2 * SLIDE.MARGIN, Math.min(infoH, 1.5), 'Additional Notes', infoText, AZ_COLORS.ACCENT_GOLD);
+        }
+      }
+
+      // Navy footer
+      addFooterBar(pptx, slide, 'CONFIDENTIAL - AstraZeneca Cell Therapy Logistics', slideIndex + 1, total);
+    });
+  };
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // INFO BOX SLIDE - Content with prominent callout boxes
+  // ══════════════════════════════════════════════════════════════════════════════
+  const addInfoBoxSlide = (title, infoItems, regularBullets, slideIndex) => {
+    allSlideBuilders.push((pptx, total) => {
+      const slide = pptx.addSlide();
+      slide.background = { color: AZ_COLORS.BG_WHITE };
+
+      // Thick purple header
+      addHeaderBar(pptx, slide, title);
+
+      let currentY = SLIDE.HEADER_HEIGHT + 0.15;
+      const contentW = SLIDE.WIDTH - 2 * SLIDE.MARGIN;
+
+      // Add info boxes
+      infoItems.forEach((item, idx) => {
+        const boxH = Math.min(1.2, 0.4 + (item.text.length / 100) * 0.3);
+        const accentColors = [AZ_COLORS.ACCENT_GOLD, AZ_COLORS.CARD_GREEN, AZ_COLORS.PURPLE, AZ_COLORS.CARD_AMBER];
+        addInfoBox(pptx, slide, SLIDE.MARGIN, currentY, contentW, boxH, item.label, item.text, accentColors[idx % accentColors.length]);
+        currentY += boxH + 0.15;
+      });
+
+      // Add remaining bullets
+      if (regularBullets.length > 0) {
+        const textObjs = regularBullets.filter(b => String(b || '').trim()).map(b => ({
+          text: String(b || ''),
+          options: {
+            bullet: { type: 'bullet', code: '2022', color: AZ_COLORS.PURPLE },
+            fontSize: 10,
+            color: AZ_COLORS.TEXT_DARK,
+            fontFace: AZ_FONTS.BODY,
+            breakLine: true,
+            paraSpaceBefore: 2,
+            paraSpaceAfter: 2,
+          },
+        }));
+
+        const remainingH = SLIDE.HEIGHT - SLIDE.FOOTER_HEIGHT - currentY - 0.15;
+        if (remainingH > 0.5 && textObjs.length > 0) {
+          slide.addText(textObjs, {
+            x: SLIDE.MARGIN, y: currentY, w: contentW, h: remainingH,
+            valign: 'top',
+          });
+        }
+      }
+
+      // Navy footer
+      addFooterBar(pptx, slide, 'CONFIDENTIAL - AstraZeneca Cell Therapy Logistics', slideIndex + 1, total);
+    });
+  };
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // CONTENT SLIDE - Enhanced with thick header and improved bullet styling
+  // ══════════════════════════════════════════════════════════════════════════════
   const addContentSlide = (title, bullets, slideIndex) => {
     allSlideBuilders.push((pptx, total) => {
       const slide = pptx.addSlide();
-      slide.background = { color: BG_WHITE };
+      slide.background = { color: AZ_COLORS.BG_WHITE };
 
-      // Thin purple accent bar at top
-      slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: '100%', h: 0.06, fill: { color: AZ_PURPLE } });
+      // Thick purple header
+      addHeaderBar(pptx, slide, title);
 
-      // Slide title - compact
-      slide.addText(title, {
-        x: 0.3, y: 0.15, w: 12.7, h: 0.4,
-        fontSize: 18, bold: true, color: TEXT_DARK, fontFace: FONT, valign: 'middle',
-      });
+      // Portfolio Health badge colors
+      const HEALTH_COLORS = {
+        poor: 'EF4444', red: 'EF4444', critical: 'EF4444',
+        fair: 'F59E0B', amber: 'F59E0B', yellow: 'F59E0B', moderate: 'F59E0B',
+        good: '22C55E', green: '22C55E', excellent: '22C55E'
+      };
 
-      // Build text objects - handle subheader markers and regular bullets
-      const textObjs = [];
+      // Process bullets - separate Portfolio Health, content boxes, and regular bullets
+      let portfolioHealthBadge = null;
+      let contentBoxItems = [];
+      let regularBullets = [];
+      let inContentBox = false;
+      let contentBoxText = [];
+
+      // Helper functions for content box detection
+      const isBoxStart = (t) => t.startsWith('>>') || t.startsWith('[BOX]');
+      const isBoxEnd = (t) => t.endsWith('<<') || t.endsWith('[/BOX]');
+      const isSingleLineBox = (t) => (t.startsWith('>>') && t.endsWith('<<')) ||
+                                      (t.startsWith('[BOX]') && t.endsWith('[/BOX]'));
 
       bullets.forEach(b => {
         const text = String(b || '');
+
+        // Check for Portfolio Health badge
+        const healthMatch = text.match(/Portfolio\s*Health[:\s]*(\w+)/i);
+        if (healthMatch) {
+          const status = healthMatch[1].toLowerCase();
+          const color = HEALTH_COLORS[status] || '22C55E';
+          const label = status === 'poor' || status === 'red' || status === 'critical' ? 'Poor' :
+                       status === 'fair' || status === 'amber' || status === 'yellow' || status === 'moderate' ? 'Fair' : 'Good';
+          portfolioHealthBadge = { color, label };
+          return;
+        }
+
+        // Check for single-line content box
+        if (isSingleLineBox(text)) {
+          const cleanText = text.replace(/^>>|^\[BOX\]/, '').replace(/<<$|\[\/BOX\]$/, '').trim();
+          if (cleanText) contentBoxItems.push(cleanText);
+          return;
+        }
+
+        // Check for multi-line content box markers
+        if (isBoxStart(text)) {
+          inContentBox = true;
+          const cleanText = text.replace(/^>>|^\[BOX\]/, '').trim();
+          if (cleanText) contentBoxText.push(cleanText);
+          return;
+        }
+        if (inContentBox) {
+          if (isBoxEnd(text)) {
+            const cleanText = text.replace(/<<$|\[\/BOX\]$/, '').trim();
+            if (cleanText) contentBoxText.push(cleanText);
+            contentBoxItems.push(contentBoxText.join(' '));
+            contentBoxText = [];
+            inContentBox = false;
+          } else {
+            contentBoxText.push(text);
+          }
+          return;
+        }
+
+        regularBullets.push(text);
+      });
+
+      // Close any unclosed content box
+      if (contentBoxText.length > 0) {
+        contentBoxItems.push(contentBoxText.join(' '));
+      }
+
+      // Track Y position for layout
+      let currentY = SLIDE.HEADER_HEIGHT + 0.15;
+
+      // Add Portfolio Health badge if present
+      if (portfolioHealthBadge) {
+        slide.addShape('rect', {
+          x: SLIDE.MARGIN, y: currentY, w: 2.5, h: 0.35,
+          fill: { color: portfolioHealthBadge.color },
+        });
+        slide.addText('Portfolio Health: ' + portfolioHealthBadge.label, {
+          x: SLIDE.MARGIN, y: currentY, w: 2.5, h: 0.35,
+          fontSize: 11, bold: true, color: 'FFFFFF',
+          fontFace: AZ_FONTS.BODY, align: 'center', valign: 'middle',
+        });
+        currentY += 0.45;
+      }
+
+      // Add content boxes if present (using info box style with purple accent)
+      contentBoxItems.forEach((boxText, idx) => {
+        addInfoBox(pptx, slide, SLIDE.MARGIN, currentY, SLIDE.WIDTH - 2 * SLIDE.MARGIN, 1.2, null, boxText, AZ_COLORS.PURPLE);
+        currentY += 1.35;
+      });
+
+      // Build text objects for regular bullets
+      const textObjs = [];
+
+      regularBullets.forEach(b => {
+        const text = String(b || '');
+        if (!text.trim()) return;
 
         // Check for subheader marker (§§§)
         if (text.startsWith('§§§')) {
@@ -1711,34 +2800,24 @@ function exportPptx(content, fname, docTitle) {
           textObjs.push({
             text: subTitle,
             options: {
-              fontSize: 11,
+              fontSize: 12,
               bold: true,
-              color: AZ_PURPLE,
-              fontFace: FONT,
+              color: AZ_COLORS.PURPLE,
+              fontFace: AZ_FONTS.HEADER,
               breakLine: true,
-              paraSpaceBefore: textObjs.length > 0 ? 6 : 0,
-              paraSpaceAfter: 2,
+              paraSpaceBefore: textObjs.length > 0 ? 8 : 0,
+              paraSpaceAfter: 3,
             },
           });
         } else {
-          // Regular bullet - handle **bold** markers
-          let textRuns = [];
-          const parts = text.split(/(\*\*.*?\*\*)/g);
-          parts.forEach(part => {
-            if (part.startsWith('**') && part.endsWith('**')) {
-              textRuns.push({ text: part.slice(2, -2), options: { bold: true } });
-            } else if (part) {
-              textRuns.push({ text: part });
-            }
-          });
-
+          // Regular bullet - use simple text string instead of runs to avoid [object Object]
           textObjs.push({
-            text: textRuns.length > 0 ? textRuns : text,
+            text: text,
             options: {
-              bullet: { type: 'bullet', code: '2022', color: AZ_PURPLE },
-              fontSize: 10,
-              color: TEXT_BODY,
-              fontFace: FONT,
+              bullet: { type: 'bullet', code: '2022', color: AZ_COLORS.PURPLE },
+              fontSize: 11,
+              color: AZ_COLORS.TEXT_DARK,
+              fontFace: AZ_FONTS.BODY,
               breakLine: true,
               paraSpaceBefore: 1,
               paraSpaceAfter: 1,
@@ -1748,22 +2827,27 @@ function exportPptx(content, fname, docTitle) {
       });
 
       if (textObjs.length > 0) {
-        slide.addText(textObjs, { x: 0.3, y: 0.6, w: 12.7, h: 6.0, valign: 'top' });
+        const remainingHeight = SLIDE.HEIGHT - SLIDE.FOOTER_HEIGHT - currentY - 0.15;
+        slide.addText(textObjs, {
+          x: SLIDE.MARGIN, y: currentY, w: SLIDE.WIDTH - 2 * SLIDE.MARGIN, h: remainingHeight,
+          valign: 'top',
+        });
       }
 
-      // Slide number
-      slide.addText((slideIndex + 1) + ' / ' + total, {
-        x: 11.5, y: 6.8, w: 1, h: 0.3,
-        fontSize: 10, color: TEXT_MUTED, align: 'right', fontFace: FONT,
-      });
+      // Navy footer
+      addFooterBar(pptx, slide, 'CONFIDENTIAL - AstraZeneca Cell Therapy Logistics', slideIndex + 1, total);
     });
   };
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // CONTENT ROUTING - Detect and route to appropriate slide layout
+  // ══════════════════════════════════════════════════════════════════════════════
 
   // Use the same parseSlides function as the preview
   const { title: parsedTitle, slides: parsedSlides } = parseSlides(content);
   console.log('[PPTX Export] Parsed', parsedSlides.length, 'slides');
 
-  // Create slides from parsed data
+  // Create slides from parsed data with intelligent layout detection
   if (parsedSlides.length > 0) {
     parsedSlides.forEach(slide => {
       if (slide.chart) {
@@ -1771,7 +2855,35 @@ function exportPptx(content, fname, docTitle) {
       } else if (slide.table) {
         addTableSlide(slide.title, slide.table, slide.bullets, allSlideBuilders.length);
       } else {
-        addContentSlide(slide.title, slide.bullets, allSlideBuilders.length);
+        // Intelligent layout detection for content slides
+        const comparisonItems = detectComparisonContent(slide.bullets);
+        if (comparisonItems && comparisonItems.length >= 2) {
+          addComparisonSlide(slide.title, comparisonItems, allSlideBuilders.length);
+        } else {
+          const metricsData = detectMetricsContent(slide.bullets);
+          if (metricsData) {
+            addMetricSlide(slide.title, metricsData, allSlideBuilders.length);
+          } else {
+            // Check for info box patterns (Important:, Note:, Warning:, etc.)
+            const infoItems = [];
+            const regularBullets = [];
+            slide.bullets.forEach(b => {
+              const text = String(b || '');
+              const infoMatch = text.match(/^(Important|Note|Warning|Status|Negotiation\s*Status|Summary|Key\s*Point|Recommendation|Action)[:\s]+(.+)$/i);
+              if (infoMatch) {
+                infoItems.push({ label: infoMatch[1], text: infoMatch[2] });
+              } else {
+                regularBullets.push(text);
+              }
+            });
+
+            if (infoItems.length >= 2) {
+              addInfoBoxSlide(slide.title, infoItems, regularBullets, allSlideBuilders.length);
+            } else {
+              addContentSlide(slide.title, slide.bullets, allSlideBuilders.length);
+            }
+          }
+        }
       }
     });
   } else {
@@ -1782,21 +2894,38 @@ function exportPptx(content, fname, docTitle) {
     }
   }
 
-  // ── Final slide ───────────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════════
+  // FINAL SLIDE - Questions with executive styling
+  // ══════════════════════════════════════════════════════════════════════════════
   allSlideBuilders.push((pptx, total) => {
     const slide = pptx.addSlide();
-    slide.background = { color: BG_WHITE };
-    slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: '100%', h: 0.06, fill: { color: AZ_PURPLE } });
+    slide.background = { color: AZ_COLORS.BG_WHITE };
+
+    // Thick purple header with generic title
+    addHeaderBar(pptx, slide, 'Discussion');
+
+    // Large "Questions?" text
     slide.addText('Questions?', {
-      x: 0.5, y: 2.8, w: 12.3, h: 1,
-      fontSize: 38, bold: true, color: TEXT_DARK,
-      align: 'left', valign: 'middle', fontFace: FONT,
+      x: SLIDE.MARGIN, y: 2.5, w: SLIDE.WIDTH - 2 * SLIDE.MARGIN, h: 1.2,
+      fontSize: 44, bold: true, color: AZ_COLORS.TEXT_NAVY,
+      align: 'center', valign: 'middle', fontFace: AZ_FONTS.HEADER,
     });
-    slide.addShape(pptx.ShapeType.rect, { x: 0.5, y: 3.85, w: 1.5, h: 0.04, fill: { color: AZ_PURPLE } });
-    slide.addText(total + ' / ' + total, {
-      x: 11.5, y: 6.85, w: 1, h: 0.2,
-      fontSize: 8, color: TEXT_MUTED, align: 'right', fontFace: FONT,
+
+    // Decorative accent line
+    slide.addShape('rect', {
+      x: (SLIDE.WIDTH - 3) / 2, y: 3.8, w: 3, h: 0.06,
+      fill: { color: AZ_COLORS.PURPLE },
     });
+
+    // Contact or thank you note
+    slide.addText('Thank you for your attention', {
+      x: SLIDE.MARGIN, y: 4.2, w: SLIDE.WIDTH - 2 * SLIDE.MARGIN, h: 0.5,
+      fontSize: 14, italic: true, color: AZ_COLORS.TEXT_GRAY,
+      align: 'center', valign: 'middle', fontFace: AZ_FONTS.BODY,
+    });
+
+    // Navy footer
+    addFooterBar(pptx, slide, 'CONFIDENTIAL - AstraZeneca Cell Therapy Logistics', total, total);
   });
 
   // Build slides with total count known
@@ -1934,6 +3063,22 @@ function addMessage(role, content, images) {
     actRow.appendChild(dlWordBtn);
     actRow.appendChild(dlTxtBtn);
 
+    // Check if this response contains pptxgenjs code - add Generate PPTX button
+    const pptxCodeInMsg = detectPptxCode(content);
+    if (pptxCodeInMsg) {
+      const pptxBtn = document.createElement('button');
+      pptxBtn.className = 'dl-txt-btn';
+      pptxBtn.style.cssText = 'background:rgba(131,0,81,0.3);border-color:rgba(131,0,81,0.6);color:#f1a3c8;font-weight:600;';
+      pptxBtn.textContent = '⬇ Generate PPTX';
+      const snapCode = pptxCodeInMsg;
+      const snapContent = content;
+      pptxBtn.onclick = () => {
+        const fname = safeFilename(extractTitle(snapContent, 'presentation') || 'presentation');
+        executePptxCode(snapCode, fname);
+      };
+      actRow.appendChild(pptxBtn);
+    }
+
     // Show artifact panel button if applicable
     const artType = detectArtifactType(content);
     if (artType) {
@@ -2008,57 +3153,245 @@ async function sendMessage() {
   addMessage('user', text, sentImages);
   showThinking();
 
-  const PRESENTATION_INSTRUCTION = `Create a professional executive presentation. PACK EVERY SLIDE WITH CONTENT — no white space.
+  // Condensed style guide for presentations (derived from 17 AZ presentations, 204 slides)
+  const AZ_STYLE_GUIDE = `## AstraZeneca Presentation Style Guide (Condensed)
 
-FORMAT:
-# Presentation Title
+### Structure (by type)
+- Executive Report: 5-6 slides (Title, Exec Summary, Metrics, Risk, Recommendations, Actions)
+- Strategy Deck: 8-14 slides (add Agenda, Analysis, Options, Timeline)
+- Operational Review: 10-14 slides (add Charts, Incident Analysis, Root Cause)
+- Vendor/Supplier: 20-28 slides (detailed comparisons, pricing, appendix)
 
-## Slide Title
-- Bullet point with specific detail (include numbers, dates, $amounts)
-- Another point — be specific, not generic
-- Use **bold** for key terms
+### Content Density
+- Title slides: 3-30 words
+- Summary slides: 100-220 words
+- Content slides: 150-250 words
+- Average 6-7 bullets per slide
 
-STRUCTURE RULES:
-1. TARGET 5-8 SLIDES TOTAL — consolidate aggressively
-2. EACH SLIDE MUST HAVE 8-12 BULLET POINTS minimum, or a full data table
-3. Bullets should be 1-2 lines each — information-dense, not verbose
-4. Include specific metrics: percentages, dollar amounts, dates, quantities
-5. Group related information under bold subheadings within slides
-6. NO FILLER — every bullet must add value
+### Language Patterns
+**Headers**: Action-oriented ("Strategic Recommendations", "Where We Stand Today", "The Bottom Line")
+**Strategic**: "Establish centralized model with measurable KPIs", "Building ecosystem for 90,000 patients"
+**Risk**: "Critical condition", "Single-source dependency creates continuity risk"
+**Recommendations**: Be specific ("Negotiate CPI cap 3-4%", "Renegotiate fuel sharing 50/50")
+**Metrics**: Always quantify ("Incident rate 8.3%", "OTD improved 20% to 66.7%", "12x volume increase")
 
-TABLES — use for structured data:
-| Column A | Column B | Status |
-| Row 1 data | Details here | Green |
-| Row 2 data | More details | Amber |
+### Executive Summary Template
+1. Portfolio Health badge (Good/Fair/Poor)
+2. Opening statement (1-2 sentences on current state)
+3. Key metrics with specific numbers and trends (3-4 items)
+4. Concluding statement on implications
 
-CHARTS — use for numerical comparisons:
-\`\`\`chart
-type: bar
-title: Q1 Performance
-labels: Jan, Feb, Mar
-data: 120, 145, 180
+### Recommendation Template
+1. **Action Title** (bold)
+2. Category | Timeline (e.g., "Technology | Q4 2026")
+3. Justification (1-2 sentences)
+
+### Visual Elements
+- Tables: 37% of slides; use for comparisons, data, status trackers
+- Charts: Performance trends, status distributions, comparison bars
+- Status colors: Green (Good/Complete), Amber (Fair/At Risk), Red (Critical/Blocked)
+
+### Acronyms (use freely)
+SLA, BLA, KPI, CMC, MSA, SRM, COGS, CGT, RFP, FTE, SOW, TCO, OTIF`;
+
+  const PRESENTATION_INSTRUCTION = `You are creating an AstraZeneca Cell Therapy executive presentation. Generate pptxgenjs JavaScript code that builds sophisticated, professional slides with precise layouts.
+
+${AZ_STYLE_GUIDE}
+
+## OUTPUT FORMAT
+
+Output a JavaScript code block containing a \`buildPresentation(pptx)\` function. The app will execute this code with a PptxGenJS instance.
+
+\`\`\`javascript
+function buildPresentation(pptx) {
+  pptx.layout = 'LAYOUT_WIDE';
+  const total = 5; // total slide count for footer numbering
+
+  // Build slides here using pptx.addSlide(), addText(), addShape(), etc.
+}
 \`\`\`
 
-EXAMPLE OF GOOD DENSE SLIDE:
-## Project Status & Timeline
-- **Phase 1 Complete**: Delivered 15 Mar 2025, 2 weeks ahead of schedule
-- **Budget**: $2.4M spent of $3.1M allocated (77% burn rate)
-- **Team**: 12 FTEs across 3 workstreams (Dev, QA, Ops)
-- **Key Milestone**: UAT sign-off achieved 22 Mar with 98% pass rate
-- **Risks Mitigated**: Vendor delay resolved via backup supplier ($45K additional)
-- **Next Phase**: Production deployment targeted 15 Apr 2025
-- **Dependencies**: Infrastructure upgrade (on track), Security review (pending)
-- **Stakeholder Update**: Steering committee briefed 28 Mar, approved Phase 2
-- **Open Items**: 3 P2 defects in backlog, 1 P1 resolved this week
-- **Resource Ask**: Additional QA resource needed for May (submitted to PMO)
+## AVAILABLE HELPERS (pre-defined, just call them)
 
-BAD (too sparse):
-## Project Update
-- Project is going well
-- On track for delivery
-- Team is working hard
+\`\`\`javascript
+// AZ Colors - use these constants
+const AZ = {
+  PURPLE: '830051',     // Primary AZ purple
+  NAVY: '1A1F4B',       // Footer/dark navy
+  GREEN: '2E7D32',      // Green status
+  AMBER: 'B8730E',      // Amber status
+  RED: '8B1A1A',        // Red status
+  CREAM: 'F5F2F0',      // Info box background
+  WHITE: 'FFFFFF',      // Slide background
+  GRAY: 'D8D8D8',       // Card borders
+  TEXT_DARK: '1A1A1A',  // Primary text
+  TEXT_GRAY: '5A5A5A',  // Subtitles
+};
 
-ALWAYS write the dense version. Fill the slide.`;
+// Add thick purple header bar (call on every slide)
+function addHeader(slide, pptx, title, subtitle) {
+  // Creates 0.8" purple header with white title text
+}
+
+// Add navy footer with page numbers
+function addFooter(slide, pptx, text, slideNum, totalSlides) {
+  // Creates 0.3" navy footer at y=7.2
+}
+
+// Add card with colored left sidebar stripe
+function addCard(slide, pptx, x, y, w, h, color, title, subtitle, items) {
+  // items = [{ label: 'METRIC', value: '$2.4M' }, { label: 'STATUS', value: 'On Track' }]
+  // Creates professional card with drop shadow, border, colored sidebar
+}
+
+// Add info/callout box with left accent bar
+function addInfoBox(slide, pptx, x, y, w, h, label, text, color) {
+  // Creates cream-colored box with colored left bar, optional label
+}
+\`\`\`
+
+## SLIDE TEMPLATES
+
+### Title Slide
+\`\`\`javascript
+let slide = pptx.addSlide();
+slide.background = { color: AZ.WHITE };
+addHeader(slide, pptx, 'Presentation Title', 'Optional Subtitle');
+slide.addText('27 May 2026', { x: 0.3, y: 1.0, fontSize: 12, color: AZ.TEXT_GRAY });
+slide.addShape('rect', { x: 0.3, y: 1.4, w: 2, h: 0.05, fill: { color: AZ.PURPLE } });
+addFooter(slide, pptx, 'CONFIDENTIAL - AstraZeneca', 1, total);
+\`\`\`
+
+### Executive Summary with Status Badge + Content Box
+\`\`\`javascript
+slide = pptx.addSlide();
+slide.background = { color: AZ.WHITE };
+addHeader(slide, pptx, 'Executive Summary');
+
+// Portfolio Health badge (Good=GREEN, Fair=AMBER, Poor=RED)
+slide.addShape('rect', { x: 0.3, y: 0.95, w: 2.2, h: 0.35, fill: { color: AZ.GREEN } });
+slide.addText('Portfolio Health: Good', { x: 0.3, y: 0.95, w: 2.2, h: 0.35, fontSize: 11, bold: true, color: 'FFFFFF', align: 'center', valign: 'middle' });
+
+// Summary content box with purple accent
+addInfoBox(slide, pptx, 0.3, 1.45, 12.7, 1.4, null, 'The CGT logistics program maintains a perfect patient safety record...', AZ.PURPLE);
+
+// Key metrics as bullets below
+slide.addText([
+  { text: 'Incident Rate: 11.1% in May (down from 40%+)', options: { bullet: true, fontSize: 11, color: AZ.TEXT_DARK } },
+  { text: 'On-Time Delivery: 75% (target: 95%)', options: { bullet: true, fontSize: 11, color: AZ.TEXT_DARK } },
+], { x: 0.3, y: 3.0, w: 12.7, h: 3.5 });
+
+addFooter(slide, pptx, 'CONFIDENTIAL - AstraZeneca', 2, total);
+\`\`\`
+
+### Comparison Cards (2-4 columns)
+\`\`\`javascript
+slide = pptx.addSlide();
+slide.background = { color: AZ.WHITE };
+addHeader(slide, pptx, 'Vendor Comparison', 'SOW Analysis');
+
+// 3 cards across
+const cardW = 4.1;
+addCard(slide, pptx, 0.3, 0.95, cardW, 5.9, AZ.GREEN, 'Option A', 'Marken', [
+  { label: 'COST', value: '$45K/shipment' },
+  { label: 'COVERAGE', value: 'Global' },
+  { label: 'RISK', value: 'Low' },
+]);
+addCard(slide, pptx, 4.6, 0.95, cardW, 5.9, AZ.AMBER, 'Option B', 'QuickSTAT', [
+  { label: 'COST', value: '$38K/shipment' },
+  { label: 'COVERAGE', value: 'US Only' },
+  { label: 'RISK', value: 'Medium' },
+]);
+addCard(slide, pptx, 8.9, 0.95, cardW, 5.9, AZ.RED, 'Option C', 'World Courier', [
+  { label: 'COST', value: '$52K/shipment' },
+  { label: 'COVERAGE', value: 'Global' },
+  { label: 'RISK', value: 'High' },
+]);
+
+addFooter(slide, pptx, 'CONFIDENTIAL - AstraZeneca', 3, total);
+\`\`\`
+
+### Table Slide
+\`\`\`javascript
+slide = pptx.addSlide();
+slide.background = { color: AZ.WHITE };
+addHeader(slide, pptx, 'Performance Metrics');
+
+const tableData = [
+  [{ text: 'Metric', options: { fill: { color: AZ.PURPLE }, color: 'FFFFFF', bold: true } },
+   { text: 'Target', options: { fill: { color: AZ.PURPLE }, color: 'FFFFFF', bold: true } },
+   { text: 'Actual', options: { fill: { color: AZ.PURPLE }, color: 'FFFFFF', bold: true } },
+   { text: 'Status', options: { fill: { color: AZ.PURPLE }, color: 'FFFFFF', bold: true } }],
+  ['On-Time Delivery', '95%', '75%', { text: 'At Risk', options: { fill: { color: 'FEF3C7' }, color: '92400E', bold: true } }],
+  ['Incident Rate', '<15%', '11.1%', { text: 'Good', options: { fill: { color: 'DCFCE7' }, color: '166534', bold: true } }],
+];
+slide.addTable(tableData, { x: 0.3, y: 0.95, w: 12.7, colW: [4, 3, 3, 2.7], border: { pt: 0.75, color: AZ.GRAY } });
+
+addFooter(slide, pptx, 'CONFIDENTIAL - AstraZeneca', 4, total);
+\`\`\`
+
+### Chart Slide
+\`\`\`javascript
+slide = pptx.addSlide();
+slide.background = { color: AZ.WHITE };
+addHeader(slide, pptx, 'On-Time Delivery Trend');
+
+slide.addChart(pptx.ChartType.line, [{
+  name: 'OTD %',
+  labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May'],
+  values: [85, 82, 78, 75, 66.7],
+}], {
+  x: 0.3, y: 0.95, w: 12.7, h: 5.9,
+  showLegend: true, showValue: true,
+  chartColors: [AZ.PURPLE],
+});
+
+addFooter(slide, pptx, 'CONFIDENTIAL - AstraZeneca', 5, total);
+\`\`\`
+
+## LAYOUT RULES (CRITICAL - prevent overlapping)
+
+**Slide dimensions**: 13.33" wide × 7.5" tall (LAYOUT_WIDE)
+**Header zone**: y=0 to y=0.8 (reserved for addHeader)
+**Content zone**: y=0.95 to y=6.85 (5.9" available height)
+**Footer zone**: y=7.2 to y=7.5 (reserved for addFooter)
+
+**Spacing guidelines**:
+- Leave 0.15" gap between vertically stacked elements
+- Cards in a row: calculate widths to fit with gaps (e.g., 3 cards = 4.1" each with 0.2" gaps)
+- Tables: set explicit height or let it auto-size, but track where next element goes
+- After a table at y=0.95 with ~6 rows: next element starts around y=2.5
+- After addInfoBox with h=1.2: next element starts at y + h + 0.15
+
+**Element positioning checklist**:
+- Total width of side-by-side elements + gaps must not exceed 12.7"
+- Track cumulative y position: each element's y = previous element's (y + h + gap)
+- Never place content below y=6.85 (footer starts at 7.2)
+
+## BEST PRACTICES
+
+1. **Precise positioning**: Use exact x, y, w, h values. Content area: y=0.95 to y=6.85 (between header and footer)
+2. **Consistent margins**: Use x=0.3 for left margin, keep 0.3 right margin (max width 12.7)
+3. **Color-coded status**: Use GREEN for good, AMBER for warning, RED for critical
+4. **Card layouts**: Perfect for comparisons, vendor analysis, option evaluation
+5. **Info boxes**: Great for executive summaries, key takeaways, callouts
+6. **Tables**: Color-code status cells (fill + text color)
+7. **Typography**: Headers in Georgia, body in Calibri. Title: 20-24pt, body: 10-12pt, labels: 7-8pt
+8. **Vertical tracking**: Always calculate next element's y position based on previous element's y + h + gap
+
+## REQUIREMENTS
+
+- Always output a complete \`buildPresentation(pptx)\` function in a JavaScript code block
+- Always call addHeader() and addFooter() on every slide
+- Use the AZ color constants (AZ.PURPLE, AZ.NAVY, etc.)
+- Use addCard() for comparison layouts with 2-4 items
+- Use addInfoBox() for executive summary content boxes
+- Count total slides and pass correct numbers to addFooter()
+- Create sophisticated, visually appealing layouts with precise positioning
+- **Track vertical position**: After each element, calculate next y = current y + current h + 0.15
+- **Verify no overlaps**: Ensure elements don't extend past y=6.85 or x=13.0
+
+Generate the presentation code now.`;
 
   // Auto-detect if user is asking for a presentation
   const lowerText = text.toLowerCase();
@@ -2066,9 +3399,17 @@ ALWAYS write the dense version. Fill the slide.`;
     /\b(presentation|powerpoint|pptx|slides?|deck)\b/.test(lowerText) ||
     /\b(create|make|build|generate|give me|prepare)\b.*\b(presentation|slides?|deck|ppt)\b/.test(lowerText);
 
+  // Check if this is a refinement of an existing presentation
+  const isRefining = isRefinementRequest(text);
+  const presentationContext = isRefining ? buildPresentationContext() : null;
+
   let systemWithDocs = document.getElementById('system-prompt').value.trim();
-  if (isAskingForPresentation) {
+  if (isAskingForPresentation || isRefining) {
     systemWithDocs = PRESENTATION_INSTRUCTION + (systemWithDocs ? '\n\n' + systemWithDocs : '');
+    // Add current presentation context for refinements
+    if (presentationContext) {
+      systemWithDocs += presentationContext;
+    }
   }
   if (documentContext.length > 0) {
     const docText = documentContext.map(d =>
@@ -2104,18 +3445,59 @@ ALWAYS write the dense version. Fill the slide.`;
     : systemWithDocs;
 
   try {
+    console.log('[Chat] Sending request...', { messageCount: messages.length, hasSystem: !!finalSystem, extendedThinking: isAskingForPresentation || isRefining });
+
     const resp = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages, system: finalSystem || undefined, max_tokens: 32000 }),
+      body: JSON.stringify({
+        messages,
+        system: finalSystem || undefined,
+        max_tokens: 32000,
+        extended_thinking: false // Disabled - gateway may not support it
+      }),
     });
+
+    console.log('[Chat] Response received, status:', resp.status);
+
     const data = await resp.json();
+    console.log('[Chat] Data parsed:', { hasContent: !!data.content, contentLength: data.content?.length, hasError: !!data.error });
+
     removeThinking();
-    if (data.error) { showError(data.error); messages.pop(); return; }
+
+    if (data.error) {
+      showError(data.error);
+      messages.pop();
+      return;
+    }
 
     const assistantContent = data.content;
+
+    if (!assistantContent) {
+      console.error('[Chat] Empty response from API:', data);
+      showError('Received empty response from API. Check server logs.');
+      messages.pop();
+      return;
+    }
+
     messages.push({ role: 'assistant', content: assistantContent });
     addMessage('assistant', assistantContent);
+
+    // Log thinking if present (for debugging)
+    if (data.thinking) {
+      console.log('[Extended Thinking]', data.thinking.slice(0, 500) + '...');
+    }
+
+    // Check if this is a pptxgenjs code response (presentation request)
+    const pptxCode = detectPptxCode(assistantContent);
+    if (pptxCode) {
+      // Auto-generate presentation from Claude's code
+      console.log('[Response] Detected pptxgenjs code, auto-generating presentation...');
+      // Let executePptxCode extract title from the code itself
+      setTimeout(() => {
+        executePptxCode(pptxCode, null);
+      }, 500); // Small delay so user sees the response first
+    }
 
     // Auto-detect and show artifact
     const artType = detectArtifactType(assistantContent);
@@ -2126,6 +3508,7 @@ ALWAYS write the dense version. Fill the slide.`;
 
   } catch (e) {
     removeThinking();
+    console.error('Chat error:', e);
     showError('Connection error — make sure you are on AZ VPN');
     messages.pop();
   } finally {

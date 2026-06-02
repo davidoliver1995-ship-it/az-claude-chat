@@ -15,7 +15,7 @@ app.use(express.static(join(__dirname, 'public')));
 
 app.post('/api/chat', async (req, res) => {
   if (!req.body) return res.status(400).json({ error: 'Request body missing' });
-  const { messages, system, max_tokens = 32000 } = req.body;
+  const { messages, system, max_tokens = 32000, extended_thinking = false } = req.body;
   const gatewayBase = process.env.AI_GATEWAY_URL || 'https://ai-gateway.astrazeneca.net/bedrock';
   const model = process.env.CLAUDE_MODEL || 'us.anthropic.claude-opus-4-5-20251101-v1:0';
   const apiKey = process.env.AI_GATEWAY_KEY || '';
@@ -24,32 +24,99 @@ app.post('/api/chat', async (req, res) => {
     return res.status(500).json({ error: 'AI_GATEWAY_KEY not set in .env file.' });
   }
 
-  try {
+  const startTime = Date.now();
+  console.log(`[API] Request started | extended_thinking: ${extended_thinking} | messages: ${messages.length}`);
+
+  // Helper to make API call with timeout
+  async function callAPI(useThinking) {
     const body = { anthropic_version: 'bedrock-2023-05-31', max_tokens, messages };
     if (system) body.system = system;
 
-    const response = await fetch(`${gatewayBase}/model/${model}/invoke`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify(body),
-    });
+    // Only add thinking if requested and we're trying with it
+    if (useThinking) {
+      body.thinking = {
+        type: 'enabled',
+        budget_tokens: 10000
+      };
+    }
+
+    // Create AbortController for timeout (5 minutes)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 300000);
+
+    try {
+      const response = await fetch(`${gatewayBase}/model/${model}/invoke`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      return response;
+    } catch (err) {
+      clearTimeout(timeoutId);
+      throw err;
+    }
+  }
+
+  try {
+    // Try with extended thinking first if requested, fall back to without if it fails
+    let response = await callAPI(extended_thinking);
+    console.log(`[API] Gateway responded | status: ${response.status} | elapsed: ${Date.now() - startTime}ms`);
+
+    // If extended thinking failed with 400 (unsupported parameter), retry without it
+    if (!response.ok && extended_thinking && response.status === 400) {
+      const errText = await response.text();
+      if (errText.includes('thinking') || errText.includes('Extra inputs')) {
+        console.log('[API] Extended thinking not supported, retrying without...');
+        response = await callAPI(false);
+        console.log(`[API] Retry responded | status: ${response.status} | elapsed: ${Date.now() - startTime}ms`);
+      } else {
+        console.log(`[API] Error: ${errText.slice(0, 200)}`);
+        return res.status(response.status).json({ error: `Gateway error ${response.status}: ${errText.slice(0, 300)}` });
+      }
+    }
 
     if (!response.ok) {
       const err = await response.text();
+      console.log(`[API] Error: ${err.slice(0, 200)}`);
       return res.status(response.status).json({ error: `Gateway error ${response.status}: ${err.slice(0, 300)}` });
     }
 
     const data = await response.json();
-    // Handle response — may be text or other content types
-    const firstBlock = data.content && data.content[0];
-    const textContent = firstBlock
-      ? (firstBlock.text ?? JSON.stringify(firstBlock))
-      : '';
-    return res.json({ content: textContent, usage: data.usage });
+    console.log(`[API] Response parsed | content blocks: ${data.content?.length || 0} | elapsed: ${Date.now() - startTime}ms`);
+
+    // Handle response — may include thinking blocks and text
+    let textContent = '';
+    let thinkingContent = '';
+
+    if (data.content && Array.isArray(data.content)) {
+      for (const block of data.content) {
+        if (block.type === 'thinking') {
+          thinkingContent = block.thinking || '';
+        } else if (block.type === 'text') {
+          textContent = block.text || '';
+        } else if (block.text) {
+          textContent = block.text;
+        }
+      }
+    } else if (data.content && data.content[0]) {
+      textContent = data.content[0].text ?? JSON.stringify(data.content[0]);
+    }
+
+    console.log(`[API] Success | text length: ${textContent.length} | thinking: ${thinkingContent.length > 0} | total: ${Date.now() - startTime}ms`);
+    return res.json({ content: textContent, thinking: thinkingContent, usage: data.usage });
   } catch (error) {
+    const elapsed = Date.now() - startTime;
+    if (error.name === 'AbortError') {
+      console.log(`[API] Timeout after ${elapsed}ms`);
+      return res.status(504).json({ error: 'Request timed out after 5 minutes. Try a simpler request.' });
+    }
+    console.log(`[API] Error after ${elapsed}ms: ${error.message}`);
     return res.status(500).json({ error: error.message });
   }
 });
+
 
 // GitHub API proxy - avoids CORS issues from browser
 app.all('/api/github/*', async (req, res) => {
