@@ -1960,6 +1960,448 @@ const SLIDE = {
   FOOTER_HEIGHT: 0.28,  // Navy footer bar (reduced)
 };
 
+// ══════════════════════════════════════════════════════════════════════════════
+// ICON LIBRARY - SVG icons as base64 data URIs for PowerPoint embedding
+// ══════════════════════════════════════════════════════════════════════════════
+const PPTX_ICONS = {
+  // ── Business & Strategy ──
+  target: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#830051" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>'),
+  growth: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#830051" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>'),
+  chart: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#830051" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>'),
+  pie: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#830051" stroke-width="2"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>'),
+  briefcase: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#830051" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>'),
+  award: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#830051" stroke-width="2"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>'),
+  flag: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#830051" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>'),
+
+  // ── People & Teams ──
+  users: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#830051" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>'),
+  user: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#830051" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>'),
+  handshake: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#830051" stroke-width="2"><path d="M11 17l-5-5 5-5M13 7l5 5-5 5"/></svg>'),
+
+  // ── Process & Operations ──
+  gear: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#830051" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>'),
+  workflow: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#830051" stroke-width="2"><rect x="3" y="3" width="6" height="6" rx="1"/><rect x="15" y="3" width="6" height="6" rx="1"/><rect x="9" y="15" width="6" height="6" rx="1"/><path d="M6 9v3a1 1 0 001 1h4m2 0h4a1 1 0 001-1V9"/><path d="M12 13v2"/></svg>'),
+  refresh: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#830051" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>'),
+  clock: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#830051" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>'),
+  calendar: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#830051" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>'),
+
+  // ── Status & Feedback ──
+  check: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#2E7D32" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>'),
+  checkCircle: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#2E7D32" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>'),
+  alert: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#B8730E" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'),
+  warning: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#B8730E" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>'),
+  error: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#8B1A1A" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>'),
+  star: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#C4922F" stroke="#C4922F" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>'),
+
+  // ── Navigation & Direction ──
+  arrowUp: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#2E7D32" stroke-width="2"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>'),
+  arrowDown: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#8B1A1A" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>'),
+  arrowRight: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#830051" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>'),
+  trendUp: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#2E7D32" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>'),
+  trendDown: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#8B1A1A" stroke-width="2"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg>'),
+
+  // ── Logistics & Supply Chain ──
+  truck: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#830051" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>'),
+  package: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#830051" stroke-width="2"><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>'),
+  warehouse: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#830051" stroke-width="2"><path d="M22 8.35V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8.35A2 2 0 0 1 3.26 6.5l8-3.2a2 2 0 0 1 1.48 0l8 3.2A2 2 0 0 1 22 8.35Z"/><path d="M6 18h12"/><path d="M6 14h12"/><rect width="12" height="12" x="6" y="10"/></svg>'),
+  globe: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#830051" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>'),
+  mapPin: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#830051" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>'),
+
+  // ── Finance & Cost ──
+  dollar: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#830051" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>'),
+  savings: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#2E7D32" stroke-width="2"><path d="M19 5c-1.5 0-2.8 1.4-3 2-3.5-1.5-11-.3-11 5 0 1.8 0 3 2 4.5V20h4v-2h3v2h4v-4c1-.5 1.7-1 2-2h2v-4h-2c0-1-.5-1.5-1-2V5z"/><path d="M2 9v1c0 1.1.9 2 2 2h1"/><path d="M16 11h0"/></svg>'),
+
+  // ── Medical & Science ──
+  flask: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#830051" stroke-width="2"><path d="M9 3h6M9 3v6l-5 8a2 2 0 0 0 2 3h12a2 2 0 0 0 2-3l-5-8V3"/></svg>'),
+  dna: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#830051" stroke-width="2"><path d="M2 15c6.667-6 13.333 0 20-6"/><path d="M9 22c1.798-1.998 2.518-3.995 2.807-5.993"/><path d="M15 2c-1.798 1.998-2.518 3.995-2.807 5.993"/><path d="M17 6l-2.5-2.5"/><path d="M14 8l-1-1"/><path d="M7 18l2.5 2.5"/><path d="M3.5 14.5l.5.5"/><path d="M20 9l.5.5"/><path d="M6.5 12.5l1 1"/><path d="M16.5 10.5l1 1"/></svg>'),
+  heart: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#830051" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>'),
+  activity: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#830051" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>'),
+
+  // ── Ideas & Innovation ──
+  lightbulb: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#C4922F" stroke-width="2"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>'),
+  sparkle: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#C4922F" stroke-width="2"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></svg>'),
+  rocket: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#830051" stroke-width="2"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg>'),
+
+  // ── Communication ──
+  message: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#830051" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>'),
+  mail: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#830051" stroke-width="2"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>'),
+  phone: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#830051" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>'),
+
+  // ── Security & Quality ──
+  shield: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#830051" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>'),
+  lock: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#830051" stroke-width="2"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>'),
+  verified: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#2E7D32" stroke-width="2"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></svg>'),
+
+  // ── Data & Documents ──
+  file: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#830051" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>'),
+  folder: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#830051" stroke-width="2"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>'),
+  database: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#830051" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>'),
+  clipboard: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#830051" stroke-width="2"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>'),
+  list: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#830051" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>'),
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SMART ICON SELECTION - Map content keywords to appropriate icons
+// ══════════════════════════════════════════════════════════════════════════════
+const ICON_KEYWORDS = {
+  // Business
+  target: ['goal', 'objective', 'target', 'aim', 'kpi', 'metric'],
+  growth: ['growth', 'increase', 'expand', 'scale', 'improve'],
+  chart: ['data', 'analytics', 'metrics', 'measure', 'track', 'report'],
+  briefcase: ['business', 'corporate', 'enterprise', 'company'],
+  award: ['achievement', 'success', 'milestone', 'award', 'recognition'],
+  flag: ['milestone', 'checkpoint', 'phase', 'stage'],
+
+  // People
+  users: ['team', 'staff', 'employee', 'people', 'workforce', 'personnel'],
+  user: ['person', 'individual', 'patient', 'customer', 'stakeholder'],
+
+  // Process
+  gear: ['process', 'operation', 'system', 'mechanism', 'configure'],
+  workflow: ['workflow', 'pipeline', 'flow', 'sequence', 'step'],
+  refresh: ['update', 'refresh', 'cycle', 'iterate', 'recurring'],
+  clock: ['time', 'schedule', 'deadline', 'duration', 'timeline'],
+  calendar: ['date', 'calendar', 'plan', 'schedule', 'quarter', 'month'],
+
+  // Status
+  checkCircle: ['complete', 'done', 'success', 'approved', 'verified'],
+  check: ['yes', 'confirm', 'agree', 'correct'],
+  alert: ['warning', 'caution', 'attention', 'important', 'note'],
+  warning: ['risk', 'concern', 'issue', 'problem'],
+  error: ['error', 'fail', 'critical', 'urgent', 'block'],
+  star: ['key', 'important', 'priority', 'highlight', 'feature'],
+
+  // Direction
+  arrowUp: ['increase', 'up', 'rise', 'improve', 'gain'],
+  arrowDown: ['decrease', 'down', 'decline', 'reduce', 'loss'],
+  arrowRight: ['next', 'forward', 'proceed', 'continue', 'then'],
+  trendUp: ['trend up', 'positive', 'upward'],
+  trendDown: ['trend down', 'negative', 'downward'],
+
+  // Logistics
+  truck: ['transport', 'delivery', 'ship', 'logistics', 'carrier'],
+  package: ['package', 'product', 'item', 'goods', 'shipment'],
+  warehouse: ['warehouse', 'storage', 'facility', 'depot', 'inventory'],
+  globe: ['global', 'international', 'worldwide', 'region', 'geography'],
+  mapPin: ['location', 'site', 'place', 'address', 'destination'],
+
+  // Finance
+  dollar: ['cost', 'price', 'budget', 'spend', 'investment', 'revenue', 'finance', 'money', 'dollar', 'saving'],
+  savings: ['saving', 'reduction', 'efficiency', 'optimize'],
+
+  // Medical
+  flask: ['research', 'lab', 'test', 'experiment', 'study'],
+  dna: ['cell', 'therapy', 'gene', 'biologic', 'treatment'],
+  heart: ['health', 'care', 'medical', 'patient', 'clinical'],
+  activity: ['monitor', 'vital', 'activity', 'performance'],
+
+  // Ideas
+  lightbulb: ['idea', 'insight', 'recommendation', 'suggest', 'solution', 'innovation'],
+  sparkle: ['new', 'launch', 'introduce', 'innovative', 'novel'],
+  rocket: ['launch', 'start', 'initiative', 'project', 'begin'],
+
+  // Communication
+  message: ['message', 'communicate', 'feedback', 'discuss'],
+  mail: ['email', 'contact', 'reach', 'notify'],
+  phone: ['call', 'phone', 'contact'],
+
+  // Security
+  shield: ['protect', 'secure', 'safety', 'compliance', 'guard'],
+  lock: ['confidential', 'private', 'restricted', 'access'],
+  verified: ['quality', 'certified', 'standard', 'audit'],
+
+  // Data
+  file: ['document', 'file', 'report', 'record'],
+  folder: ['folder', 'category', 'organize', 'group'],
+  database: ['database', 'data', 'system', 'repository'],
+  clipboard: ['checklist', 'task', 'todo', 'action', 'item'],
+  list: ['list', 'summary', 'overview', 'agenda'],
+};
+
+// Get best icon for given text content
+function getSmartIcon(text) {
+  if (!text) return null;
+  const lower = text.toLowerCase();
+
+  for (const [iconName, keywords] of Object.entries(ICON_KEYWORDS)) {
+    for (const keyword of keywords) {
+      if (lower.includes(keyword)) {
+        return iconName;
+      }
+    }
+  }
+  return null;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// DECORATIVE SHAPES - Visual elements to enhance slides
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Add icon to slide
+function addSlideIcon(pptx, slide, iconName, x, y, size = 0.5) {
+  const iconData = PPTX_ICONS[iconName];
+  if (!iconData) return;
+
+  slide.addImage({
+    data: iconData,
+    x: x,
+    y: y,
+    w: size,
+    h: size,
+  });
+}
+
+// Add decorative corner accent (top-right or bottom-left triangular accent)
+function addCornerAccent(pptx, slide, position = 'top-right', color = AZ_COLORS.PURPLE, size = 0.8) {
+  if (position === 'top-right') {
+    slide.addShape('rtTriangle', {
+      x: SLIDE.WIDTH - size, y: SLIDE.HEADER_HEIGHT,
+      w: size, h: size,
+      fill: { color: color, transparency: 85 },
+      rotate: 90,
+    });
+  } else if (position === 'bottom-left') {
+    slide.addShape('rtTriangle', {
+      x: 0, y: SLIDE.HEIGHT - SLIDE.FOOTER_HEIGHT - size,
+      w: size, h: size,
+      fill: { color: color, transparency: 85 },
+      rotate: 270,
+    });
+  }
+}
+
+// Add decorative accent bar (vertical stripe on left side of content area)
+function addAccentBar(pptx, slide, y, height, color = AZ_COLORS.PURPLE) {
+  slide.addShape('rect', {
+    x: SLIDE.MARGIN, y: y,
+    w: 0.08, h: height,
+    fill: { color: color },
+  });
+}
+
+// Add decorative dots pattern (subtle background element)
+function addDotsPattern(pptx, slide, x, y, rows = 3, cols = 3, color = AZ_COLORS.PURPLE) {
+  const spacing = 0.15;
+  const dotSize = 0.04;
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      slide.addShape(pptx.ShapeType.ellipse, {
+        x: x + c * spacing,
+        y: y + r * spacing,
+        w: dotSize, h: dotSize,
+        fill: { color: color, transparency: 70 },
+      });
+    }
+  }
+}
+
+// Add horizontal divider line
+function addDividerLine(pptx, slide, y, width = null, color = AZ_COLORS.PURPLE) {
+  const lineWidth = width || (SLIDE.WIDTH - 2 * SLIDE.MARGIN);
+  slide.addShape('rect', {
+    x: SLIDE.MARGIN, y: y,
+    w: lineWidth, h: 0.02,
+    fill: { color: color, transparency: 50 },
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SLIDE TEMPLATES - Pre-built layouts with visual elements
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Template: Title slide with icon
+function addTitleSlideTemplate(pptx, title, subtitle, iconName = 'target') {
+  const slide = pptx.addSlide();
+  slide.background = { color: AZ_COLORS.BG_WHITE };
+
+  // Purple header
+  slide.addShape('rect', {
+    x: 0, y: 0, w: '100%', h: SLIDE.HEADER_HEIGHT,
+    fill: { color: AZ_COLORS.PURPLE },
+  });
+
+  // Title in header
+  slide.addText(title, {
+    x: SLIDE.MARGIN, y: 0.15, w: SLIDE.WIDTH - 2 * SLIDE.MARGIN - 0.8, h: 0.55,
+    fontSize: 24, bold: true, color: 'FFFFFF',
+    fontFace: AZ_FONTS.HEADER, valign: 'middle',
+  });
+
+  // Icon in header (right side)
+  if (iconName && PPTX_ICONS[iconName]) {
+    addSlideIcon(pptx, slide, iconName, SLIDE.WIDTH - SLIDE.MARGIN - 0.5, 0.1, 0.5);
+  }
+
+  // Subtitle below header
+  if (subtitle) {
+    slide.addText(subtitle, {
+      x: SLIDE.MARGIN, y: SLIDE.HEADER_HEIGHT + 0.3, w: SLIDE.WIDTH - 2 * SLIDE.MARGIN, h: 0.4,
+      fontSize: 14, italic: true, color: AZ_COLORS.TEXT_GRAY,
+      fontFace: AZ_FONTS.BODY, valign: 'middle',
+    });
+  }
+
+  // Decorative accent line
+  slide.addShape('rect', {
+    x: SLIDE.MARGIN, y: SLIDE.HEADER_HEIGHT + 0.8, w: 2.5, h: 0.05,
+    fill: { color: AZ_COLORS.PURPLE },
+  });
+
+  // Corner accent
+  addCornerAccent(pptx, slide, 'bottom-left', AZ_COLORS.PURPLE, 1.2);
+
+  return slide;
+}
+
+// Template: Content slide with icon column
+function addIconColumnSlide(pptx, title, items) {
+  const slide = pptx.addSlide();
+  slide.background = { color: AZ_COLORS.BG_WHITE };
+
+  // Header
+  addHeaderBar(pptx, slide, title);
+
+  const startY = SLIDE.HEADER_HEIGHT + 0.2;
+  const itemHeight = 0.9;
+  const iconSize = 0.45;
+  const textX = SLIDE.MARGIN + 0.7;
+
+  items.forEach((item, idx) => {
+    const y = startY + idx * itemHeight;
+    const iconName = item.icon || getSmartIcon(item.text) || 'arrowRight';
+
+    // Icon
+    if (PPTX_ICONS[iconName]) {
+      addSlideIcon(pptx, slide, iconName, SLIDE.MARGIN, y + 0.1, iconSize);
+    }
+
+    // Text
+    slide.addText(item.text, {
+      x: textX, y: y, w: SLIDE.WIDTH - textX - SLIDE.MARGIN, h: itemHeight - 0.1,
+      fontSize: 12, color: AZ_COLORS.TEXT_DARK,
+      fontFace: AZ_FONTS.BODY, valign: 'top',
+    });
+  });
+
+  // Corner decoration
+  addCornerAccent(pptx, slide, 'top-right', AZ_COLORS.PURPLE, 0.6);
+
+  return slide;
+}
+
+// Template: Two-column comparison slide
+function addComparisonSlide(pptx, title, leftTitle, leftItems, rightTitle, rightItems, leftIcon = 'arrowDown', rightIcon = 'arrowUp') {
+  const slide = pptx.addSlide();
+  slide.background = { color: AZ_COLORS.BG_WHITE };
+
+  // Header
+  addHeaderBar(pptx, slide, title);
+
+  const colWidth = (SLIDE.WIDTH - 3 * SLIDE.MARGIN) / 2;
+  const startY = SLIDE.HEADER_HEIGHT + 0.2;
+
+  // Left column header with icon
+  if (PPTX_ICONS[leftIcon]) {
+    addSlideIcon(pptx, slide, leftIcon, SLIDE.MARGIN, startY, 0.35);
+  }
+  slide.addText(leftTitle, {
+    x: SLIDE.MARGIN + 0.45, y: startY, w: colWidth - 0.5, h: 0.4,
+    fontSize: 14, bold: true, color: AZ_COLORS.TEXT_NAVY,
+    fontFace: AZ_FONTS.HEADER, valign: 'middle',
+  });
+
+  // Left column items
+  leftItems.forEach((item, idx) => {
+    slide.addText('• ' + item, {
+      x: SLIDE.MARGIN, y: startY + 0.5 + idx * 0.35, w: colWidth, h: 0.35,
+      fontSize: 11, color: AZ_COLORS.TEXT_DARK,
+      fontFace: AZ_FONTS.BODY, valign: 'top',
+    });
+  });
+
+  // Right column header with icon
+  const rightX = SLIDE.MARGIN + colWidth + SLIDE.MARGIN;
+  if (PPTX_ICONS[rightIcon]) {
+    addSlideIcon(pptx, slide, rightIcon, rightX, startY, 0.35);
+  }
+  slide.addText(rightTitle, {
+    x: rightX + 0.45, y: startY, w: colWidth - 0.5, h: 0.4,
+    fontSize: 14, bold: true, color: AZ_COLORS.TEXT_NAVY,
+    fontFace: AZ_FONTS.HEADER, valign: 'middle',
+  });
+
+  // Right column items
+  rightItems.forEach((item, idx) => {
+    slide.addText('• ' + item, {
+      x: rightX, y: startY + 0.5 + idx * 0.35, w: colWidth, h: 0.35,
+      fontSize: 11, color: AZ_COLORS.TEXT_DARK,
+      fontFace: AZ_FONTS.BODY, valign: 'top',
+    });
+  });
+
+  // Center divider line
+  slide.addShape('rect', {
+    x: SLIDE.WIDTH / 2 - 0.01, y: startY,
+    w: 0.02, h: SLIDE.HEIGHT - startY - SLIDE.FOOTER_HEIGHT - 0.2,
+    fill: { color: AZ_COLORS.BORDER_GRAY },
+  });
+
+  return slide;
+}
+
+// Template: Stats/KPI slide with large numbers and icons
+function addStatsSlide(pptx, title, stats) {
+  const slide = pptx.addSlide();
+  slide.background = { color: AZ_COLORS.BG_WHITE };
+
+  // Header
+  addHeaderBar(pptx, slide, title);
+
+  const numStats = Math.min(stats.length, 4);
+  const statWidth = (SLIDE.WIDTH - (numStats + 1) * SLIDE.MARGIN) / numStats;
+  const startY = SLIDE.HEADER_HEIGHT + 0.5;
+
+  stats.slice(0, 4).forEach((stat, idx) => {
+    const x = SLIDE.MARGIN + idx * (statWidth + SLIDE.MARGIN);
+
+    // Background card
+    slide.addShape('rect', {
+      x: x, y: startY, w: statWidth, h: 1.8,
+      fill: { color: AZ_COLORS.BG_LIGHT },
+      line: { color: AZ_COLORS.BORDER_GRAY, width: 0.5 },
+    });
+
+    // Accent bar at top
+    slide.addShape('rect', {
+      x: x, y: startY, w: statWidth, h: 0.06,
+      fill: { color: stat.color || AZ_COLORS.PURPLE },
+    });
+
+    // Icon
+    const iconName = stat.icon || getSmartIcon(stat.label) || 'chart';
+    if (PPTX_ICONS[iconName]) {
+      addSlideIcon(pptx, slide, iconName, x + statWidth / 2 - 0.2, startY + 0.15, 0.4);
+    }
+
+    // Big number
+    slide.addText(stat.value, {
+      x: x, y: startY + 0.6, w: statWidth, h: 0.6,
+      fontSize: 28, bold: true, color: stat.color || AZ_COLORS.PURPLE,
+      fontFace: AZ_FONTS.HEADER, align: 'center', valign: 'middle',
+    });
+
+    // Label
+    slide.addText(stat.label, {
+      x: x + 0.1, y: startY + 1.25, w: statWidth - 0.2, h: 0.45,
+      fontSize: 10, color: AZ_COLORS.TEXT_GRAY,
+      fontFace: AZ_FONTS.BODY, align: 'center', valign: 'top', wrap: true,
+    });
+  });
+
+  return slide;
+}
+
 // ── Helper: Parse text with **bold** markers ─────────────────────────────────
 function parseTextRuns(text, baseOptions = {}) {
   if (!text || typeof text !== 'string') return [{ text: String(text || ''), options: baseOptions }];
@@ -2340,6 +2782,18 @@ function exportPptx(content, fname, docTitle) {
       fill: { color: AZ_COLORS.PURPLE },
     });
 
+    // Add smart icon based on presentation title
+    const titleIcon = getSmartIcon(presentationTitle) || 'briefcase';
+    if (PPTX_ICONS[titleIcon]) {
+      addSlideIcon(pptx, slide, titleIcon, SLIDE.WIDTH - SLIDE.MARGIN - 1.2, SLIDE.HEADER_HEIGHT + 0.4, 0.9);
+    }
+
+    // Add decorative corner accent
+    addCornerAccent(pptx, slide, 'bottom-left', AZ_COLORS.PURPLE, 1.5);
+
+    // Add subtle dots pattern decoration
+    addDotsPattern(pptx, slide, SLIDE.WIDTH - 1.2, SLIDE.HEIGHT - SLIDE.FOOTER_HEIGHT - 0.8, 4, 4, AZ_COLORS.PURPLE);
+
     // Navy footer bar
     addFooterBar(pptx, slide, 'CONFIDENTIAL - AstraZeneca Cell Therapy Logistics', 1, total);
   });
@@ -2354,6 +2808,12 @@ function exportPptx(content, fname, docTitle) {
 
       // Thick purple header
       addHeaderBar(pptx, slide, title, chart.title || null);
+
+      // Add chart-relevant icon to header
+      const chartIcon = chart.type === 'pie' || chart.type === 'doughnut' ? 'pie' : 'chart';
+      if (PPTX_ICONS[chartIcon]) {
+        addSlideIcon(pptx, slide, chartIcon, SLIDE.WIDTH - SLIDE.MARGIN - 0.5, 0.1, 0.5);
+      }
 
       const pptxChartType = {
         'bar': pptx.ChartType.bar,
@@ -2413,6 +2873,12 @@ function exportPptx(content, fname, docTitle) {
 
       // Thick purple header
       addHeaderBar(pptx, slide, title);
+
+      // Add table/list icon to header
+      const tableIcon = getSmartIcon(title) || 'list';
+      if (PPTX_ICONS[tableIcon]) {
+        addSlideIcon(pptx, slide, tableIcon, SLIDE.WIDTH - SLIDE.MARGIN - 0.5, 0.1, 0.5);
+      }
 
       // Build table with explicit cell styling
       const numCols = table.headers.length;
@@ -2703,6 +3169,15 @@ function exportPptx(content, fname, docTitle) {
 
       // Thick purple header
       addHeaderBar(pptx, slide, title);
+
+      // Add smart icon to header based on slide title
+      const titleIcon = getSmartIcon(title);
+      if (titleIcon && PPTX_ICONS[titleIcon]) {
+        addSlideIcon(pptx, slide, titleIcon, SLIDE.WIDTH - SLIDE.MARGIN - 0.5, 0.1, 0.5);
+      }
+
+      // Add subtle corner accent for visual interest
+      addCornerAccent(pptx, slide, 'top-right', AZ_COLORS.PURPLE, 0.5);
 
       // Portfolio Health badge colors
       const HEALTH_COLORS = {
