@@ -3451,21 +3451,62 @@ function renderAssistantContent(content) {
       span.innerHTML = html.replace(/\n/g, '<br>');
       wrapper.appendChild(span);
     } else {
-      const blockWrap = document.createElement('div');
-      blockWrap.className = 'code-block-wrap';
-      const pre = document.createElement('pre');
-      const codeEl = document.createElement('code');
-      codeEl.textContent = p.code;
-      pre.appendChild(codeEl);
-      blockWrap.appendChild(pre);
-      const fname = inferFilename(p.lang);
-      const dlBtn = document.createElement('button');
-      dlBtn.className = 'code-dl-btn';
-      dlBtn.textContent = `⬇ Download ${fname}`;
-      const snap = p.code;
-      dlBtn.onclick = () => triggerDownload(fname, snap);
-      blockWrap.appendChild(dlBtn);
-      wrapper.appendChild(blockWrap);
+      // Check if this is pptxgenjs presentation code - hide it for cleaner UI
+      const isPptxCode = p.code.includes('buildPresentation') ||
+                         (p.code.includes('pptx.addSlide') && p.code.includes('addText'));
+
+      if (isPptxCode) {
+        // Show a clean summary instead of raw code
+        const summaryDiv = document.createElement('div');
+        summaryDiv.style.cssText = 'background:rgba(131,0,81,0.1);border:1px solid rgba(131,0,81,0.3);border-radius:8px;padding:12px 16px;margin:8px 0;';
+
+        // Count slides in the code
+        const slideCount = (p.code.match(/pptx\.addSlide\(\)/g) || []).length;
+
+        summaryDiv.innerHTML = `
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:24px;">📊</span>
+            <div>
+              <div style="font-weight:600;color:#f1a3c8;">Presentation Ready</div>
+              <div style="font-size:12px;color:#94a3b8;">${slideCount} slide${slideCount !== 1 ? 's' : ''} generated • Click "Generate PPTX" below to download</div>
+            </div>
+          </div>
+        `;
+
+        // Add expandable code section (collapsed by default)
+        const detailsEl = document.createElement('details');
+        detailsEl.style.cssText = 'margin-top:8px;';
+        const summaryEl = document.createElement('summary');
+        summaryEl.style.cssText = 'cursor:pointer;font-size:11px;color:#64748b;';
+        summaryEl.textContent = 'Show code';
+        const pre = document.createElement('pre');
+        pre.style.cssText = 'margin-top:8px;max-height:300px;overflow:auto;font-size:11px;';
+        const codeEl = document.createElement('code');
+        codeEl.textContent = p.code;
+        pre.appendChild(codeEl);
+        detailsEl.appendChild(summaryEl);
+        detailsEl.appendChild(pre);
+        summaryDiv.appendChild(detailsEl);
+
+        wrapper.appendChild(summaryDiv);
+      } else {
+        // Regular code block display
+        const blockWrap = document.createElement('div');
+        blockWrap.className = 'code-block-wrap';
+        const pre = document.createElement('pre');
+        const codeEl = document.createElement('code');
+        codeEl.textContent = p.code;
+        pre.appendChild(codeEl);
+        blockWrap.appendChild(pre);
+        const fname = inferFilename(p.lang);
+        const dlBtn = document.createElement('button');
+        dlBtn.className = 'code-dl-btn';
+        dlBtn.textContent = `⬇ Download ${fname}`;
+        const snap = p.code;
+        dlBtn.onclick = () => triggerDownload(fname, snap);
+        blockWrap.appendChild(dlBtn);
+        wrapper.appendChild(blockWrap);
+      }
     }
   });
 
