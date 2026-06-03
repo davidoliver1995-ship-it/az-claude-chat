@@ -207,10 +207,10 @@
     #attach-btn:hover { color: #e2e8f0; border-color: rgba(255,255,255,0.3); }
     .user-image-preview { max-width: 240px; max-height: 180px; border-radius: 8px; margin-top: 8px; display: block; }
   </style>
-  <!-- Office generation libraries -->
-  <script src="/libs/DOCX.umd.js"></script>
-  <script src="/libs/Xlsx.min.js"></script>
-  <script src="/libs/Pptxgen.bundle.js"></script>
+  <!-- Office generation libraries (relative paths for Domino subpath support) -->
+  <script src="libs/docx.umd.js"></script>
+  <script src="libs/xlsx.min.js"></script>
+  <script src="libs/pptxgen.bundle.js"></script>
 </head>
 <body>
 
@@ -335,6 +335,15 @@
 
 <script>
 'use strict';
+
+// ── API Base URL (for Domino subpath support) ─────────────────────────────────
+// Detect the base URL from the current page location
+const API_BASE = (() => {
+  const path = window.location.pathname;
+  // Remove trailing /index.html or / and use as base
+  const base = path.replace(/\/?(index\.html)?$/, '');
+  return base || '';
+})();
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let messages = [];
@@ -468,7 +477,7 @@ async function processFile(file) {
     reader.onload = async (e) => {
       const base64 = e.target.result.split(',')[1];
       try {
-        const resp = await fetch('/api/parse-document', {
+        const resp = await fetch(API_BASE + '/api/parse-document', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ filename: name, content: base64, mimeType: file.type }),
@@ -578,7 +587,7 @@ function toggleSearchMode() {
 
 async function performWebSearch(query) {
   try {
-    const resp = await fetch('/api/search', {
+    const resp = await fetch(API_BASE + '/api/search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query, maxResults: 5 }),
@@ -3447,7 +3456,7 @@ Generate the presentation code now.`;
   try {
     console.log('[Chat] Sending request...', { messageCount: messages.length, hasSystem: !!finalSystem, extendedThinking: isAskingForPresentation || isRefining });
 
-    const resp = await fetch('/api/chat', {
+    const resp = await fetch(API_BASE + '/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -3668,7 +3677,7 @@ async function ghLoadAllFiles() {
   // Get Claude acknowledgment
   showThinking();
   try {
-    const resp = await fetch('/api/chat', {
+    const resp = await fetch(API_BASE + '/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ messages }),
@@ -3807,7 +3816,7 @@ async function ghAskClaudeToEdit() {
   btn.disabled = true;
   const prompt = `Here is the complete file "${editMode.filename}":\n\n\`\`\`\n${editMode.content}\n\`\`\`\n\nPlease make the following change: ${request}\n\nRespond with ONLY the complete updated file content, no explanation, no markdown code fences - just the raw file content.`;
   try {
-    const resp = await fetch('/api/chat', {
+    const resp = await fetch(API_BASE + '/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ messages: [{ role: 'user', content: prompt }], max_tokens: 32000 })
