@@ -706,26 +706,16 @@ function mdToHtml(md) {
 function detectArtifactType(content) {
   if (!content) return null;
 
-  // Skip if primarily a code block response
-  const codeBlockCount = (content.match(/```/g) || []).length / 2;
-  const nonCodeContent = content.replace(/```[\s\S]*?```/g, '').trim();
-  if (codeBlockCount >= 1 && nonCodeContent.length < 100) return null;
+  // Only show artifact panel for content that can be downloaded/exported:
+  // - Tables with substantial data (for Excel export)
+  // - Explicit presentation requests are handled separately via pptxgenjs detection
 
-  // Count ## headings
-  const h2Matches = content.match(/^## .+/gm) || [];
-  const h1Matches = content.match(/^# .+/gm) || [];
-
-  // Table: multiple lines with | separators
+  // Table: multiple lines with | separators (5+ rows to be substantial)
   const tableLines = content.split('\n').filter(l => l.trim().startsWith('|') && l.trim().endsWith('|'));
-  if (tableLines.length >= 3) return 'table';
+  if (tableLines.length >= 5) return 'table';
 
-  // Presentation: 2+ ## headings
-  if (h2Matches.length >= 2) return 'presentation';
-
-  // Document: has headings OR is long
-  const wordCount = content.split(/\s+/).filter(Boolean).length;
-  if (h1Matches.length >= 1 || h2Matches.length >= 1 || wordCount > 300) return 'document';
-
+  // Don't auto-show artifact panel for regular chat responses
+  // Presentations are handled by detectPptxCode() and executePptxCode() separately
   return null;
 }
 
