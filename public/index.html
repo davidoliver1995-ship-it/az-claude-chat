@@ -702,18 +702,31 @@ function mdToHtml(md) {
 }
 
 // ── Artifact detection ────────────────────────────────────────────────────────
-function detectArtifactType(content) {
+function detectArtifactType(content, userMessage = '') {
   if (!content) return null;
 
-  // Only show artifact panel for content that can be downloaded/exported:
-  // - Tables with substantial data (for Excel export)
-  // - Explicit presentation requests are handled separately via pptxgenjs detection
+  // Only show artifact panel for content that can be downloaded/exported
 
   // Table: multiple lines with | separators (5+ rows to be substantial)
   const tableLines = content.split('\n').filter(l => l.trim().startsWith('|') && l.trim().endsWith('|'));
   if (tableLines.length >= 5) return 'table';
 
-  // Don't auto-show artifact panel for regular chat responses
+  // Document/PDF: user explicitly asked for a document, word doc, or PDF
+  const lowerMsg = userMessage.toLowerCase();
+  const isAskingForDocument =
+    /\b(document|word doc|docx|pdf|write up|write-up|writeup|report|memo|letter|brief)\b/.test(lowerMsg) ||
+    /\b(create|make|build|generate|give me|prepare|draft|write)\b.*\b(document|doc|pdf|report|memo|letter|brief)\b/.test(lowerMsg);
+
+  if (isAskingForDocument) {
+    // Verify the response has document-like structure (headings or substantial length)
+    const h1Matches = content.match(/^# .+/gm) || [];
+    const h2Matches = content.match(/^## .+/gm) || [];
+    const wordCount = content.split(/\s+/).filter(Boolean).length;
+    if (h1Matches.length >= 1 || h2Matches.length >= 1 || wordCount > 200) {
+      return 'document';
+    }
+  }
+
   // Presentations are handled by detectPptxCode() and executePptxCode() separately
   return null;
 }
@@ -3942,8 +3955,8 @@ Generate the presentation code now.`;
       }, 500); // Small delay so user sees the response first
     }
 
-    // Auto-detect and show artifact
-    const artType = detectArtifactType(assistantContent);
+    // Auto-detect and show artifact (pass user message for context)
+    const artType = detectArtifactType(assistantContent, text);
     if (artType) {
       const artTitle = extractTitle(assistantContent, artType);
       showArtifact(artType, assistantContent, artTitle);
