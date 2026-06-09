@@ -13,34 +13,100 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(join(__dirname, 'public')));
 
+// Web search tool definition
+const WEB_SEARCH_TOOL = {
+  name: 'web_search',
+  description: 'Search the web for current information. Use this when you need up-to-date information, recent news, current prices, weather, or facts you are uncertain about. Do not use for questions the user can answer from uploaded documents.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      query: {
+        type: 'string',
+        description: 'The search query'
+      }
+    },
+    required: ['query']
+  }
+};
+
+// Helper to perform Tavily search
+async function performTavilySearch(query) {
+  const tavilyKey = process.env.TAVILY_API_KEY;
+  if (!tavilyKey) return null;
+
+  const https = await import('https');
+  const postData = JSON.stringify({
+    api_key: tavilyKey,
+    query,
+    max_results: 5,
+    search_depth: 'basic',
+    include_answer: true,
+    include_raw_content: false,
+  });
+
+  const options = {
+    hostname: 'api.tavily.com',
+    port: 443,
+    path: '/search',
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(postData),
+    },
+    rejectUnauthorized: false,
+  };
+
+  return new Promise((resolve) => {
+    const request = https.request(options, (response) => {
+      let body = '';
+      response.on('data', chunk => body += chunk);
+      response.on('end', () => {
+        try {
+          const data = JSON.parse(body);
+          let result = '';
+          if (data.answer) result += `Summary: ${data.answer}\n\n`;
+          if (data.results) {
+            data.results.forEach((r, i) => {
+              result += `[${i + 1}] ${r.title}\n${r.content}\nSource: ${r.url}\n\n`;
+            });
+          }
+          resolve(result || 'No results found.');
+        } catch (e) {
+          resolve('Search failed: ' + e.message);
+        }
+      });
+    });
+    request.on('error', (e) => resolve('Search failed: ' + e.message));
+    request.write(postData);
+    request.end();
+  });
+}
+
 app.post('/api/chat', async (req, res) => {
   if (!req.body) return res.status(400).json({ error: 'Request body missing' });
   const { messages, system, max_tokens = 32000, extended_thinking = false } = req.body;
   const gatewayBase = process.env.AI_GATEWAY_URL || 'https://ai-gateway.astrazeneca.net/bedrock';
   const model = process.env.CLAUDE_MODEL || 'us.anthropic.claude-opus-4-5-20251101-v1:0';
   const apiKey = process.env.AI_GATEWAY_KEY || '';
+  const hasSearchEnabled = !!process.env.TAVILY_API_KEY;
 
   if (!apiKey) {
     return res.status(500).json({ error: 'AI_GATEWAY_KEY not set in .env file.' });
   }
 
   const startTime = Date.now();
-  console.log(`[API] Request started | extended_thinking: ${extended_thinking} | messages: ${messages.length}`);
+  console.log(`[API] Request started | extended_thinking: ${extended_thinking} | messages: ${messages.length} | tools: ${hasSearchEnabled}`);
 
   // Helper to make API call with timeout
-  async function callAPI(useThinking) {
-    const body = { anthropic_version: 'bedrock-2023-05-31', max_tokens, messages };
+  async function callAPI(msgs, useThinking, tools = null) {
+    const body = { anthropic_version: 'bedrock-2023-05-31', max_tokens, messages: msgs };
     if (system) body.system = system;
+    if (tools && tools.length > 0) body.tools = tools;
 
-    // Only add thinking if requested and we're trying with it
     if (useThinking) {
-      body.thinking = {
-        type: 'enabled',
-        budget_tokens: 10000
-      };
+      body.thinking = { type: 'enabled', budget_tokens: 10000 };
     }
 
-    // Create AbortController for timeout (5 minutes)
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 300000);
 
@@ -60,52 +126,85 @@ app.post('/api/chat', async (req, res) => {
   }
 
   try {
-    // Try with extended thinking first if requested, fall back to without if it fails
-    let response = await callAPI(extended_thinking);
-    console.log(`[API] Gateway responded | status: ${response.status} | elapsed: ${Date.now() - startTime}ms`);
-
-    // If extended thinking failed with 400 (unsupported parameter), retry without it
-    if (!response.ok && extended_thinking && response.status === 400) {
-      const errText = await response.text();
-      if (errText.includes('thinking') || errText.includes('Extra inputs')) {
-        console.log('[API] Extended thinking not supported, retrying without...');
-        response = await callAPI(false);
-        console.log(`[API] Retry responded | status: ${response.status} | elapsed: ${Date.now() - startTime}ms`);
-      } else {
-        console.log(`[API] Error: ${errText.slice(0, 200)}`);
-        return res.status(response.status).json({ error: `Gateway error ${response.status}: ${errText.slice(0, 300)}` });
-      }
-    }
-
-    if (!response.ok) {
-      const err = await response.text();
-      console.log(`[API] Error: ${err.slice(0, 200)}`);
-      return res.status(response.status).json({ error: `Gateway error ${response.status}: ${err.slice(0, 300)}` });
-    }
-
-    const data = await response.json();
-    console.log(`[API] Response parsed | content blocks: ${data.content?.length || 0} | elapsed: ${Date.now() - startTime}ms`);
-
-    // Handle response — may include thinking blocks and text
-    let textContent = '';
+    // Clone messages for the tool use loop
+    let workingMessages = JSON.parse(JSON.stringify(messages));
+    const tools = hasSearchEnabled ? [WEB_SEARCH_TOOL] : [];
+    let finalTextContent = '';
     let thinkingContent = '';
+    let iterations = 0;
+    const maxIterations = 5;
 
-    if (data.content && Array.isArray(data.content)) {
-      for (const block of data.content) {
-        if (block.type === 'thinking') {
-          thinkingContent = block.thinking || '';
-        } else if (block.type === 'text') {
-          textContent = block.text || '';
-        } else if (block.text) {
-          textContent = block.text;
+    // Tool use loop - keep calling until Claude gives a final text response
+    while (iterations < maxIterations) {
+      iterations++;
+      let response = await callAPI(workingMessages, extended_thinking && iterations === 1, tools);
+      console.log(`[API] Iteration ${iterations} | status: ${response.status} | elapsed: ${Date.now() - startTime}ms`);
+
+      // Handle extended thinking fallback on first iteration
+      if (!response.ok && extended_thinking && iterations === 1 && response.status === 400) {
+        const errText = await response.text();
+        if (errText.includes('thinking') || errText.includes('Extra inputs')) {
+          console.log('[API] Extended thinking not supported, retrying without...');
+          response = await callAPI(workingMessages, false, tools);
+        } else {
+          return res.status(response.status).json({ error: `Gateway error ${response.status}: ${errText.slice(0, 300)}` });
         }
       }
-    } else if (data.content && data.content[0]) {
-      textContent = data.content[0].text ?? JSON.stringify(data.content[0]);
+
+      if (!response.ok) {
+        const err = await response.text();
+        console.log(`[API] Error: ${err.slice(0, 200)}`);
+        return res.status(response.status).json({ error: `Gateway error ${response.status}: ${err.slice(0, 300)}` });
+      }
+
+      const data = await response.json();
+      console.log(`[API] Response | stop_reason: ${data.stop_reason} | content blocks: ${data.content?.length || 0}`);
+
+      // Check if Claude wants to use a tool
+      if (data.stop_reason === 'tool_use') {
+        const toolUseBlocks = data.content.filter(b => b.type === 'tool_use');
+        const toolResults = [];
+
+        for (const toolUse of toolUseBlocks) {
+          if (toolUse.name === 'web_search') {
+            console.log(`[API] Tool call: web_search("${toolUse.input.query}")`);
+            const searchResult = await performTavilySearch(toolUse.input.query);
+            toolResults.push({
+              type: 'tool_result',
+              tool_use_id: toolUse.id,
+              content: searchResult
+            });
+          }
+        }
+
+        // Add assistant message with tool use, then tool results
+        workingMessages.push({ role: 'assistant', content: data.content });
+        workingMessages.push({ role: 'user', content: toolResults });
+
+      } else {
+        // Final response - extract text
+        if (data.content && Array.isArray(data.content)) {
+          for (const block of data.content) {
+            if (block.type === 'thinking') {
+              thinkingContent = block.thinking || '';
+            } else if (block.type === 'text') {
+              finalTextContent += block.text || '';
+            } else if (block.text) {
+              finalTextContent += block.text;
+            }
+          }
+        }
+        break;
+      }
     }
 
-    console.log(`[API] Success | text length: ${textContent.length} | thinking: ${thinkingContent.length > 0} | total: ${Date.now() - startTime}ms`);
-    return res.json({ content: textContent, thinking: thinkingContent, usage: data.usage });
+    if (iterations >= maxIterations && !finalTextContent) {
+      return res.status(500).json({ error: 'Too many tool iterations without final response' });
+    }
+
+    console.log(`[API] Success | iterations: ${iterations} | text length: ${finalTextContent.length} | total: ${Date.now() - startTime}ms`);
+    return res.json({ content: finalTextContent, thinking: thinkingContent, usage: null });
+
   } catch (error) {
     const elapsed = Date.now() - startTime;
     if (error.name === 'AbortError') {
